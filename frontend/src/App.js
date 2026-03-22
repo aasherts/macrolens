@@ -83,8 +83,43 @@ function App() {
         </div>
       </div>
 
+    <div className="bottom-grid">
+        <div className="card">
+          <div className="card-title">Macro indicators</div>
+          <div className="macro-row"><span className="macro-name">Fed funds rate</span><span className="macro-val">5.25%<span className="badge badge-neu">Hold</span></span></div>
+          <div className="macro-row"><span className="macro-name">CPI inflation</span><span className="macro-val">3.1%<span className="badge badge-down">Cooling</span></span></div>
+          <div className="macro-row"><span className="macro-name">10Y yield</span><span className="macro-val">4.38%<span className="badge badge-down">Down</span></span></div>
+          <div className="macro-row"><span className="macro-name">GDP growth</span><span className="macro-val">2.8%<span className="badge badge-up">Beat</span></span></div>
+          <div className="macro-row"><span className="macro-name">VIX</span><span className="macro-val">14.2<span className="badge badge-up">Low</span></span></div>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Evidence used</div>
+          <div className="macro-row" style={{display:'block', padding:'8px 0'}}>
+            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px'}}>50-day moving average crossover</div>
+            <div style={{fontSize:'12px', color:'#888'}}>Price crossed above 50-DMA 4 days ago — historically bullish for AAPL in 63% of cases.</div>
+          </div>
+          <div className="macro-row" style={{display:'block', padding:'8px 0'}}>
+            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px'}}>Yield curve normalisation</div>
+            <div style={{fontSize:'12px', color:'#888'}}>2Y–10Y spread narrowed from −80bps to −22bps, correlated with tech sector rotation.</div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Market sentiment</div>
+          <div className="macro-row"><span className="macro-name">News tone</span><span className="macro-val up">72% positive</span></div>
+          <div className="macro-row"><span className="macro-name">Analyst buy</span><span className="macro-val up">81%</span></div>
+          <div className="macro-row"><span className="macro-name">Short interest</span><span className="macro-val down">21%</span></div>
+          <div className="macro-row"><span className="macro-name">Options skew</span><span className="macro-val up">Bullish</span></div>
+        </div>
+      </div>
+
+      <div className="disclaimer">MacroLens outputs are probabilistic signals for educational purposes only, not financial advice.</div>
+
     </div>
+
   );
 }
+
 
 export default App;
