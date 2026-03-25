@@ -53,8 +53,8 @@ def get_stock(ticker: str, range: str = "1mo"):
 
     period, interval = range_map.get(range, ("1mo", "1d"))
     stock = yf.Ticker(ticker)
-    hist = stock.history(period=period, interval=interval)
-
+    hist = stock.history(period=period, interval=interval, prepost=True)
+    
     prices = hist["Close"].round(2).tolist()
 
     if range == "1d":
@@ -69,26 +69,50 @@ def get_stock(ticker: str, range: str = "1mo"):
     change = round(current - previous, 2)
     change_pct = round((change / previous) * 100, 2)
 
+    recent = prices[-7:] if len(prices) >= 7 else prices
+    avg_daily_change = (recent[-1] - recent[0]) / len(recent)
+    volatility = max(prices[-30:]) - min(prices[-30:]) if len(prices) >= 30 else max(prices) - min(prices)
+    band = round(volatility * 0.15, 2)
+
+    pred_dates = ["Forecast +2d", "Forecast +4d", "Forecast +7d"]
+    pred_mid = [
+        round(current + avg_daily_change * 2, 2),
+        round(current + avg_daily_change * 4, 2),
+        round(current + avg_daily_change * 7, 2),
+    ]
+    pred_high = [round(p + band, 2) for p in pred_mid]
+    pred_low = [round(p - band, 2) for p in pred_mid]
+
+    direction = "upward" if avg_daily_change > 0 else "downward"
+    pct_predicted = round((pred_mid[-1] - current) / current * 100, 2)
+
     info = stock.info
     sector = info.get("sector", "N/A")
     company_name = info.get("shortName", ticker)
 
     prompt = f"""
-    You are a financial analyst. Analyze this stock data and explain in 3-4 concise bullet points why this stock is moving and what the outlook is. Do not include any headings or titles. Start directly with the first bullet point.
+    You are a financial analyst. Analyze this stock data and provide two things:
+
+    1. In 2-3 bullet points explain why this stock is currently moving the way it is.
+    2. In 1-2 bullet points explain specifically why you predict {direction} movement of {abs(pct_predicted)}% over the next 7 days, referencing the momentum and any macro factors.
+
+    Do not include any headings or titles. Start directly with the first bullet point.
 
     Company: {company_name}
     Ticker: {ticker.upper()}
     Sector: {sector}
     Current price: ${current}
     Today's change: ${change} ({change_pct}%)
-    1 month price range: ${min(prices)} - ${max(prices)}
+    Recent 7-day trend: {direction} with avg daily move of ${round(avg_daily_change, 2)}
+    Price range (30d): ${min(prices[-30:] if len(prices) >= 30 else prices)} - ${max(prices[-30:] if len(prices) >= 30 else prices)}
+    7-day predicted price: ${pred_mid[-1]} ({pct_predicted}%)
 
-    Be specific, data-driven, and write for a general audience. Each bullet point should be one sentence.
+    Be specific and data-driven. Write for a general audience.
     """
 
     message = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=300,
+        max_tokens=400,
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -103,5 +127,13 @@ def get_stock(ticker: str, range: str = "1mo"):
         "prices": prices,
         "dates": dates,
         "analysis": analysis,
+        "prediction": {
+            "dates": pred_dates,
+            "mid": pred_mid,
+            "high": pred_high,
+            "low": pred_low,
+            "direction": direction,
+            "pct": pct_predicted,
+        }
     }
     

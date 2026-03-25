@@ -50,23 +50,62 @@ function App() {
     setSearchResults([]);
   };
 
+  const last = stockData ? stockData.prices[stockData.prices.length - 1] : null;
+
   const priceData = stockData ? {
-    labels: stockData.dates,
-    datasets: [{
-      label: 'Price',
-      data: stockData.prices,
-      borderColor: '#7eb8f7',
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.3,
-      fill: false,
-    }]
+    labels: [...stockData.dates, ...stockData.prediction.dates],
+    datasets: [
+      {
+        label: 'Price',
+        data: [...stockData.prices, null, null, null],
+        borderColor: '#7eb8f7',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false,
+      },
+      {
+        label: 'Predicted',
+        data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.mid],
+        borderColor: '#7b1c3e',
+        borderWidth: 2,
+        borderDash: [5, 3],
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false,
+      },
+      {
+        label: 'High band',
+        data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.high],
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(123,28,62,0.15)',
+        pointRadius: 0,
+        tension: 0.3,
+        fill: '+1',
+      },
+      {
+        label: 'Low band',
+        data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.low],
+        borderColor: 'transparent',
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false,
+      },
+    ]
   } : { labels: [], datasets: [] };
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.raw !== null ? `${ctx.dataset.label}: $${ctx.raw}` : null,
+          filter: item => item.raw !== null && item.dataset.label !== 'High band' && item.dataset.label !== 'Low band'
+        }
+      }
+    },
     scales: {
       x: {
         grid: { display: false },
@@ -116,8 +155,12 @@ function App() {
         </div>
         <div className="metric-card">
           <div className="metric-label">7-day forecast</div>
-          <div className="metric-value up">+4.2%</div>
-          <div className="metric-change">68% confidence</div>
+          <div className={`metric-value ${stockData && stockData.prediction.pct >= 0 ? 'up' : 'down'}`}>
+            {stockData ? `${stockData.prediction.pct >= 0 ? '+' : ''}${stockData.prediction.pct}%` : '--'}
+          </div>
+          <div className="metric-change">
+            {stockData ? `Target: $${stockData.prediction.mid[2]}` : '--'}
+          </div>
         </div>
         <div className="metric-card">
           <div className="metric-label">Market cap</div>
@@ -125,9 +168,11 @@ function App() {
           <div className="metric-change">Mega-cap</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Macro signal</div>
-          <div className="metric-value up">Bullish</div>
-          <div className="metric-change">3 of 5 indicators</div>
+          <div className="metric-label">Predicted direction</div>
+          <div className={`metric-value ${stockData && stockData.prediction.direction === 'upward' ? 'up' : 'down'}`}>
+            {stockData ? (stockData.prediction.direction === 'upward' ? 'Bullish' : 'Bearish') : '--'}
+          </div>
+          <div className="metric-change">AI momentum signal</div>
         </div>
       </div>
 
@@ -147,6 +192,17 @@ function App() {
           </div>
           <div className="chart-wrapper">
             {stockData ? <Line data={priceData} options={chartOptions} /> : <div className="loading">Loading...</div>}
+          </div>
+          <div style={{display:'flex', gap:'16px', marginTop:'10px', fontSize:'11px', color:'#555'}}>
+            <span style={{display:'flex', alignItems:'center', gap:'4px'}}>
+              <span style={{width:'20px', height:'2px', background:'#7eb8f7', display:'inline-block'}}></span> Actual
+            </span>
+            <span style={{display:'flex', alignItems:'center', gap:'4px'}}>
+              <span style={{width:'20px', height:'2px', background:'#7b1c3e', display:'inline-block'}}></span> Predicted
+            </span>
+            <span style={{display:'flex', alignItems:'center', gap:'4px'}}>
+              <span style={{width:'10px', height:'10px', background:'rgba(123,28,62,0.15)', display:'inline-block', borderRadius:'2px'}}></span> Confidence band
+            </span>
           </div>
         </div>
 
