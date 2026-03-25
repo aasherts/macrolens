@@ -17,17 +17,37 @@ function App() {
   const [ticker, setTicker] = useState('AAPL');
   const [input, setInput] = useState('AAPL');
   const [stockData, setStockData] = useState(null);
+  const [range, setRange] = useState('1mo');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:8000/stock/${ticker}`)
+    setStockData(null);
+    fetch(`http://127.0.0.1:8000/stock/${ticker}?range=${range}`)
       .then(res => res.json())
       .then(data => setStockData(data));
-  }, [ticker]);
+  }, [ticker, range]);
 
-  const handleSearch = (e) => {
-    if (e.key === 'Enter') {
-      setTicker(input.toUpperCase());
+  const handleInput = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    if (val.length > 1) {
+      fetch(`http://127.0.0.1:8000/search/${val}`)
+        .then(res => res.json())
+        .then(data => {
+          setSearchResults(data.results);
+          setShowDropdown(true);
+        });
+    } else {
+      setShowDropdown(false);
     }
+  };
+
+  const handleSelect = (symbol) => {
+    setTicker(symbol);
+    setInput(symbol);
+    setShowDropdown(false);
+    setSearchResults([]);
   };
 
   const priceData = stockData ? {
@@ -35,7 +55,7 @@ function App() {
     datasets: [{
       label: 'Price',
       data: stockData.prices,
-      borderColor: '#378ADD',
+      borderColor: '#7eb8f7',
       borderWidth: 2,
       pointRadius: 0,
       tension: 0.3,
@@ -48,21 +68,42 @@ function App() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     scales: {
-      x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => '$' + v } }
+      x: {
+        grid: { display: false },
+        ticks: { color: '#555555', font: { size: 11 } }
+      },
+      y: {
+        grid: { color: 'rgba(255,255,255,0.05)' },
+        ticks: { color: '#555555', font: { size: 11 }, callback: v => '$' + v }
+      }
     }
   };
+
+  const ranges = ['1d', '1w', '1mo', '6mo', 'ytd', '1y', '5y'];
 
   return (
     <div className="app">
       <div className="topbar">
         <div className="brand">macro<span>lens</span></div>
-        <input
-          placeholder="Search ticker e.g. AAPL"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleSearch}
-        />
+        <div style={{flex:1, position:'relative'}}>
+          <input
+            placeholder="Search ticker or company name..."
+            value={input}
+            onChange={handleInput}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+          />
+          {showDropdown && searchResults.length > 0 && (
+            <div className="dropdown">
+              {searchResults.map((r, i) => (
+                <div key={i} className="dropdown-item" onMouseDown={() => handleSelect(r.symbol)}>
+                  <span className="dropdown-symbol">{r.symbol}</span>
+                  <span className="dropdown-name">{r.name}</span>
+                  <span className="dropdown-type">{r.type}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="metrics">
@@ -70,7 +111,7 @@ function App() {
           <div className="metric-label">Current price</div>
           <div className="metric-value">${stockData ? stockData.current : '--'}</div>
           <div className={`metric-change ${stockData && stockData.change >= 0 ? 'up' : 'down'}`}>
-            {stockData ? `${stockData.change} (${stockData.change_pct}%) today` : '--'}
+            {stockData ? `${stockData.change >= 0 ? '+' : ''}${stockData.change} (${stockData.change_pct}%) today` : '--'}
           </div>
         </div>
         <div className="metric-card">
@@ -92,15 +133,37 @@ function App() {
 
       <div className="main-grid">
         <div className="card">
-          <div className="card-title">Price chart — {stockData ? stockData.ticker : '...'}</div>
+          <div className="card-title">Price chart — {stockData ? stockData.company_name : '...'}</div>
+          <div className="range-selector">
+            {ranges.map(r => (
+              <button
+                key={r}
+                className={`range-btn ${range === r ? 'active' : ''}`}
+                onClick={() => setRange(r)}
+              >
+                {r.toUpperCase()}
+              </button>
+            ))}
+          </div>
           <div className="chart-wrapper">
-            <Line data={priceData} options={chartOptions} />
+            {stockData ? <Line data={priceData} options={chartOptions} /> : <div className="loading">Loading...</div>}
           </div>
         </div>
 
         <div className="card">
-          <div className="card-title">Why it's moving</div>
-          <p>Fed paused rate hikes, easing pressure on tech valuations.</p>
+          <div className="card-title">Why it's moving — AI analysis</div>
+          <div className="why-panel">
+            {stockData && stockData.analysis ? (
+              stockData.analysis.split('\n').filter(line => line.trim()).map((line, i) => (
+                <div key={i} className="why-item">
+                  <span className="bullet">•</span>
+                  <span>{line.replace(/^[•\-\*]\s*/, '').replace(/\*\*/g, '')}</span>
+                </div>
+              ))
+            ) : (
+              <p style={{color:'#555', fontSize:'13px'}}>Loading analysis...</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -117,12 +180,12 @@ function App() {
         <div className="card">
           <div className="card-title">Evidence used</div>
           <div className="macro-row" style={{display:'block', padding:'8px 0'}}>
-            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px'}}>50-day moving average crossover</div>
-            <div style={{fontSize:'12px', color:'#888'}}>Price crossed above 50-DMA 4 days ago — historically bullish in 63% of cases.</div>
+            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px', color:'#ffffff'}}>50-day moving average crossover</div>
+            <div style={{fontSize:'12px', color:'#555555'}}>Price crossed above 50-DMA 4 days ago — historically bullish in 63% of cases.</div>
           </div>
           <div className="macro-row" style={{display:'block', padding:'8px 0'}}>
-            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px'}}>Yield curve normalisation</div>
-            <div style={{fontSize:'12px', color:'#888'}}>2Y–10Y spread narrowed from −80bps to −22bps, correlated with tech sector rotation.</div>
+            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px', color:'#ffffff'}}>Yield curve normalisation</div>
+            <div style={{fontSize:'12px', color:'#555555'}}>2Y–10Y spread narrowed from −80bps to −22bps, correlated with tech sector rotation.</div>
           </div>
         </div>
 
