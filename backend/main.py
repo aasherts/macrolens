@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from urllib.parse import quote
 import yfinance as yf
 import anthropic
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,28 +22,25 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 @app.get("/search/{query}")
 def search_tickers(query: str):
-    import requests
-    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=6&newsCount=0"
+    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={quote(query)}&quotesCount=6&newsCount=0"
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
     data = response.json()
-    
+
     results = []
-    for quote in data.get("quotes", []):
-        if quote.get("quoteType") in ["EQUITY", "ETF", "INDEX", "MUTUALFUND", "CRYPTOCURRENCY", "CURRENCY", "FUTURE"]:
+    for quote_result in data.get("quotes", []):
+        if quote_result.get("quoteType") in ["EQUITY", "ETF", "INDEX", "MUTUALFUND", "CRYPTOCURRENCY", "CURRENCY", "FUTURE"]:
             results.append({
-                "symbol": quote.get("symbol", ""),
-                "name": quote.get("longname") or quote.get("shortname", ""),
-                "type": quote.get("quoteType", ""),
-                "exchange": quote.get("exchange", ""),
+                "symbol": quote_result.get("symbol", ""),
+                "name": quote_result.get("longname") or quote_result.get("shortname", ""),
+                "type": quote_result.get("quoteType", ""),
+                "exchange": quote_result.get("exchange", ""),
             })
-    
+
     return {"results": results}
-    
-@app.get("/stock/{ticker}")
+
+@app.get("/stock/{ticker:path}")
 def get_stock(ticker: str, range: str = "1mo"):
-    stock = yf.Ticker(ticker)
-    
     range_map = {
         "1d": ("1d", "5m"),
         "1w": ("5d", "30m"),
@@ -51,12 +50,13 @@ def get_stock(ticker: str, range: str = "1mo"):
         "ytd": ("ytd", "1d"),
         "5y": ("5y", "1wk"),
     }
-    
+
     period, interval = range_map.get(range, ("1mo", "1d"))
+    stock = yf.Ticker(ticker)
     hist = stock.history(period=period, interval=interval)
 
     prices = hist["Close"].round(2).tolist()
-    
+
     if range == "1d":
         dates = hist.index.strftime("%H:%M").tolist()
     elif range == "1w":
@@ -104,3 +104,4 @@ def get_stock(ticker: str, range: str = "1mo"):
         "dates": dates,
         "analysis": analysis,
     }
+    
