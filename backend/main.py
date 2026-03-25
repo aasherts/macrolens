@@ -18,6 +18,26 @@ app.add_middleware(
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+@app.get("/search/{query}")
+def search_tickers(query: str):
+    import requests
+    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=6&newsCount=0"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    
+    results = []
+    for quote in data.get("quotes", []):
+        if quote.get("quoteType") in ["EQUITY", "ETF", "INDEX", "MUTUALFUND", "CRYPTOCURRENCY", "CURRENCY", "FUTURE"]:
+            results.append({
+                "symbol": quote.get("symbol", ""),
+                "name": quote.get("longname") or quote.get("shortname", ""),
+                "type": quote.get("quoteType", ""),
+                "exchange": quote.get("exchange", ""),
+            })
+    
+    return {"results": results}
+    
 @app.get("/stock/{ticker}")
 def get_stock(ticker: str, range: str = "1mo"):
     stock = yf.Ticker(ticker)
@@ -84,4 +104,3 @@ def get_stock(ticker: str, range: str = "1mo"):
         "dates": dates,
         "analysis": analysis,
     }
-    
