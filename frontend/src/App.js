@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { Line } from 'react-chartjs-2';
 import {
@@ -13,6 +13,24 @@ import {
 
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterDraw(chart) {
+    if (!chart._crosshairX) return;
+    const { ctx, chartArea: { top, bottom } } = chart;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(chart._crosshairX, top);
+    ctx.lineTo(chart._crosshairX, bottom);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
+ChartJS.register(crosshairPlugin);
+
 function App() {
   const [ticker, setTicker] = useState('AAPL');
   const [input, setInput] = useState('AAPL');
@@ -20,13 +38,24 @@ function App() {
   const [range, setRange] = useState('1mo');
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [hoverPrice, setHoverPrice] = useState(null);
+  const [hoverTime, setHoverTime] = useState(null);
+  const chartRef = useRef(null);
+  const [macroData, setMacroData] = useState(null);
 
   useEffect(() => {
     setStockData(null);
+    setHoverPrice(null);
+    setHoverTime(null);
     fetch(`http://127.0.0.1:8000/stock/${ticker}?range=${range}`)
       .then(res => res.json())
       .then(data => setStockData(data));
   }, [ticker, range]);
+  useEffect(() => {
+  fetch('http://127.0.0.1:8000/macro')
+    .then(res => res.json())
+    .then(data => setMacroData(data));
+}, []);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -97,13 +126,30 @@ function App() {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    onHover: (event, elements, chart) => {
+      if (!event.native) return;
+      const points = chart.getElementsAtEventForMode(event.native, 'index', { intersect: false }, true);
+      if (points.length > 0) {
+        const idx = points[0].index;
+        const labels = chart.data.labels;
+        const dataset = chart.data.datasets[0];
+        const price = dataset.data[idx];
+        chart._crosshairX = points[0].element.x;
+        chart.draw();
+        if (price !== null && price !== undefined) {
+          setHoverPrice(price);
+          setHoverTime(labels[idx]);
+        }
+      }
+    },
     plugins: {
       legend: { display: false },
       tooltip: {
-        callbacks: {
-          label: ctx => ctx.raw !== null ? `${ctx.dataset.label}: $${ctx.raw}` : null,
-          filter: item => item.raw !== null && item.dataset.label !== 'High band' && item.dataset.label !== 'Low band'
-        }
+        enabled: false,
       }
     },
     scales: {
@@ -148,9 +194,11 @@ function App() {
       <div className="metrics">
         <div className="metric-card">
           <div className="metric-label">Current price</div>
-          <div className="metric-value">${stockData ? stockData.current : '--'}</div>
-          <div className={`metric-change ${stockData && stockData.change >= 0 ? 'up' : 'down'}`}>
-            {stockData ? `${stockData.change >= 0 ? '+' : ''}${stockData.change} (${stockData.change_pct}%) today` : '--'}
+          <div className="metric-value">
+            ${hoverPrice ? hoverPrice.toFixed(2) : (stockData ? stockData.current : '--')}
+          </div>
+          <div className="metric-change" style={{color: hoverPrice ? '#7eb8f7' : undefined}}>
+            {hoverPrice ? hoverTime : (stockData ? `${stockData.change >= 0 ? '+' : ''}${stockData.change} (${stockData.change_pct}%) today` : '--')}
           </div>
         </div>
         <div className="metric-card">
@@ -177,7 +225,7 @@ function App() {
       </div>
 
       <div className="main-grid">
-        <div className="card">
+        <div className="card" onMouseLeave={() => { setHoverPrice(null); setHoverTime(null); if(chartRef.current) { chartRef.current._crosshairX = null; chartRef.current.draw(); } }}>
           <div className="card-title">Price chart — {stockData ? stockData.company_name : '...'}</div>
           <div className="range-selector">
             {ranges.map(r => (
@@ -191,7 +239,7 @@ function App() {
             ))}
           </div>
           <div className="chart-wrapper">
-            {stockData ? <Line data={priceData} options={chartOptions} /> : <div className="loading">Loading...</div>}
+            {stockData ? <Line ref={chartRef} data={priceData} options={chartOptions} /> : <div className="loading">Loading...</div>}
           </div>
           <div style={{display:'flex', gap:'16px', marginTop:'10px', fontSize:'11px', color:'#555'}}>
             <span style={{display:'flex', alignItems:'center', gap:'4px'}}>
@@ -226,11 +274,54 @@ function App() {
       <div className="bottom-grid">
         <div className="card">
           <div className="card-title">Macro indicators</div>
-          <div className="macro-row"><span className="macro-name">Fed funds rate</span><span className="macro-val">5.25%<span className="badge badge-neu">Hold</span></span></div>
-          <div className="macro-row"><span className="macro-name">CPI inflation</span><span className="macro-val">3.1%<span className="badge badge-down">Cooling</span></span></div>
-          <div className="macro-row"><span className="macro-name">10Y yield</span><span className="macro-val">4.38%<span className="badge badge-down">Down</span></span></div>
-          <div className="macro-row"><span className="macro-name">GDP growth</span><span className="macro-val">2.8%<span className="badge badge-up">Beat</span></span></div>
-          <div className="macro-row"><span className="macro-name">VIX</span><span className="macro-val">14.2<span className="badge badge-up">Low</span></span></div>
+          <div className="macro-row">
+            <span className="macro-name">Fed funds rate</span>
+            <span className="macro-val">{macroData ? `${macroData.fed_rate.value}%` : '--'}
+              <span className={`badge ${macroData && macroData.fed_rate.change > 0 ? 'badge-down' : macroData && macroData.fed_rate.change < 0 ? 'badge-up' : 'badge-neu'}`}>
+                {macroData ? (macroData.fed_rate.change === 0 ? 'Hold' : macroData.fed_rate.change > 0 ? '↑' : '↓') : ''}
+              </span>
+            </span>
+          </div>
+          <div className="macro-row">
+            <span className="macro-name">CPI inflation</span>
+            <span className="macro-val">{macroData ? `${macroData.cpi.value}` : '--'}
+              <span className={`badge ${macroData && macroData.cpi.change < 0 ? 'badge-up' : 'badge-down'}`}>
+                {macroData ? (macroData.cpi.change > 0 ? '↑ Rising' : '↓ Cooling') : ''}
+              </span>
+            </span>
+          </div>
+          <div className="macro-row">
+            <span className="macro-name">10Y yield</span>
+            <span className="macro-val">{macroData ? `${macroData.ten_year_yield.value}%` : '--'}
+              <span className={`badge ${macroData && macroData.ten_year_yield.change > 0 ? 'badge-down' : 'badge-up'}`}>
+                {macroData ? (macroData.ten_year_yield.change > 0 ? `↑ ${macroData.ten_year_yield.change}` : `↓ ${macroData.ten_year_yield.change}`) : ''}
+              </span>
+            </span>
+          </div>
+          <div className="macro-row">
+            <span className="macro-name">Unemployment</span>
+            <span className="macro-val">{macroData ? `${macroData.unemployment.value}%` : '--'}
+              <span className={`badge ${macroData && macroData.unemployment.change > 0 ? 'badge-down' : 'badge-up'}`}>
+                {macroData ? (macroData.unemployment.change > 0 ? '↑ Rising' : '↓ Falling') : ''}
+              </span>
+            </span>
+          </div>
+          <div className="macro-row">
+            <span className="macro-name">VIX</span>
+            <span className="macro-val">{macroData ? macroData.vix.value : '--'}
+              <span className={`badge ${macroData && parseFloat(macroData.vix.value) > 20 ? 'badge-down' : 'badge-up'}`}>
+                {macroData ? (parseFloat(macroData.vix.value) > 20 ? 'Elevated' : 'Low') : ''}
+              </span>
+            </span>
+          </div>
+          <div className="macro-row">
+            <span className="macro-name">GDP</span>
+            <span className="macro-val">{macroData ? `$${(parseFloat(macroData.gdp.value) / 1000).toFixed(1)}T` : '--'}
+              <span className={`badge ${macroData && macroData.gdp.change > 0 ? 'badge-up' : 'badge-down'}`}>
+                {macroData ? (macroData.gdp.change > 0 ? '↑ Growing' : '↓ Shrinking') : ''}
+              </span>
+            </span>
+          </div>
         </div>
 
         <div className="card">
