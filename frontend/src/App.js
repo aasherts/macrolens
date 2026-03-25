@@ -42,6 +42,7 @@ function App() {
   const [hoverTime, setHoverTime] = useState(null);
   const chartRef = useRef(null);
   const [macroData, setMacroData] = useState(null);
+  const [newsData, setNewsData] = useState([]);
 
   useEffect(() => {
     setStockData(null);
@@ -56,6 +57,13 @@ function App() {
     .then(res => res.json())
     .then(data => setMacroData(data));
 }, []);
+useEffect(() => {
+  if (stockData) {
+    fetch(`http://127.0.0.1:8000/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
+      .then(res => res.json())
+      .then(data => setNewsData(data.articles || []));
+  }
+}, [stockData]);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -325,15 +333,17 @@ function App() {
         </div>
 
         <div className="card">
-          <div className="card-title">Evidence used</div>
-          <div className="macro-row" style={{display:'block', padding:'8px 0'}}>
-            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px', color:'#ffffff'}}>50-day moving average crossover</div>
-            <div style={{fontSize:'12px', color:'#555555'}}>Price crossed above 50-DMA 4 days ago — historically bullish in 63% of cases.</div>
-          </div>
-          <div className="macro-row" style={{display:'block', padding:'8px 0'}}>
-            <div style={{fontWeight:'500', fontSize:'13px', marginBottom:'4px', color:'#ffffff'}}>Yield curve normalisation</div>
-            <div style={{fontSize:'12px', color:'#555555'}}>2Y–10Y spread narrowed from −80bps to −22bps, correlated with tech sector rotation.</div>
-          </div>
+          <div className="card-title">Latest news</div>
+          {newsData.length > 0 ? newsData.map((article, i) => (
+            <div key={i} style={{padding:'8px 0', borderBottom: i < newsData.length - 1 ? '1px solid #1a1a1a' : 'none'}}>
+              <a href={article.url} target="_blank" rel="noreferrer" style={{textDecoration:'none'}}>
+                <div style={{fontSize:'13px', color:'#ffffff', marginBottom:'4px', lineHeight:'1.4', fontWeight:'500'}}>{article.title}</div>
+                <div style={{fontSize:'11px', color:'#555555'}}>{article.source} · {article.publishedAt}</div>
+              </a>
+            </div>
+          )) : (
+            <p style={{color:'#555', fontSize:'13px'}}>Loading news...</p>
+          )}
         </div>
 
         <div className="card">
