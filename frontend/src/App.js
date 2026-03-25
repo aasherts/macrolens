@@ -40,9 +40,9 @@ function App() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [hoverPrice, setHoverPrice] = useState(null);
   const [hoverTime, setHoverTime] = useState(null);
-  const chartRef = useRef(null);
   const [macroData, setMacroData] = useState(null);
   const [newsData, setNewsData] = useState([]);
+  const chartRef = useRef(null);
 
   useEffect(() => {
     setStockData(null);
@@ -52,18 +52,20 @@ function App() {
       .then(res => res.json())
       .then(data => setStockData(data));
   }, [ticker, range]);
+
   useEffect(() => {
-  fetch('http://127.0.0.1:8000/macro')
-    .then(res => res.json())
-    .then(data => setMacroData(data));
-}, []);
-useEffect(() => {
-  if (stockData) {
-    fetch(`http://127.0.0.1:8000/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
+    fetch('http://127.0.0.1:8000/macro')
       .then(res => res.json())
-      .then(data => setNewsData(data.articles || []));
-  }
-}, [stockData]);
+      .then(data => setMacroData(data));
+  }, []);
+
+  useEffect(() => {
+    if (stockData) {
+      fetch(`http://127.0.0.1:8000/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
+        .then(res => res.json())
+        .then(data => setNewsData(data.articles || []));
+    }
+  }, [stockData]);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -156,9 +158,7 @@ useEffect(() => {
     },
     plugins: {
       legend: { display: false },
-      tooltip: {
-        enabled: false,
-      }
+      tooltip: { enabled: false }
     },
     scales: {
       x: {
@@ -220,8 +220,8 @@ useEffect(() => {
         </div>
         <div className="metric-card">
           <div className="metric-label">Market cap</div>
-          <div className="metric-value">$3.28T</div>
-          <div className="metric-change">Mega-cap</div>
+          <div className="metric-value">{stockData?.sentiment?.market_cap || '--'}</div>
+          <div className="metric-change">{stockData?.sentiment?.recommendation || '--'}</div>
         </div>
         <div className="metric-card">
           <div className="metric-label">Predicted direction</div>
@@ -284,49 +284,49 @@ useEffect(() => {
           <div className="card-title">Macro indicators</div>
           <div className="macro-row">
             <span className="macro-name">Fed funds rate</span>
-            <span className="macro-val">{macroData ? `${macroData.fed_rate.value}%` : '--'}
-              <span className={`badge ${macroData && macroData.fed_rate.change > 0 ? 'badge-down' : macroData && macroData.fed_rate.change < 0 ? 'badge-up' : 'badge-neu'}`}>
-                {macroData ? (macroData.fed_rate.change === 0 ? 'Hold' : macroData.fed_rate.change > 0 ? '↑' : '↓') : ''}
+            <span className="macro-val">{macroData?.fed_rate ? `${macroData.fed_rate.value}%` : '--'}
+              <span className={`badge ${macroData?.fed_rate?.change === 0 ? 'badge-neu' : macroData?.fed_rate?.change > 0 ? 'badge-down' : 'badge-up'}`}>
+                {macroData?.fed_rate ? (macroData.fed_rate.change === 0 ? 'Hold' : macroData.fed_rate.change > 0 ? '↑' : '↓') : ''}
               </span>
             </span>
           </div>
           <div className="macro-row">
             <span className="macro-name">CPI inflation</span>
-            <span className="macro-val">{macroData ? `${macroData.cpi.value}` : '--'}
-              <span className={`badge ${macroData && macroData.cpi.change < 0 ? 'badge-up' : 'badge-down'}`}>
-                {macroData ? (macroData.cpi.change > 0 ? '↑ Rising' : '↓ Cooling') : ''}
+            <span className="macro-val">{macroData?.cpi ? macroData.cpi.value : '--'}
+              <span className={`badge ${macroData?.cpi?.change < 0 ? 'badge-up' : 'badge-down'}`}>
+                {macroData?.cpi ? (macroData.cpi.change > 0 ? '↑ Rising' : '↓ Cooling') : ''}
               </span>
             </span>
           </div>
           <div className="macro-row">
             <span className="macro-name">10Y yield</span>
-            <span className="macro-val">{macroData ? `${macroData.ten_year_yield.value}%` : '--'}
-              <span className={`badge ${macroData && macroData.ten_year_yield.change > 0 ? 'badge-down' : 'badge-up'}`}>
-                {macroData ? (macroData.ten_year_yield.change > 0 ? `↑ ${macroData.ten_year_yield.change}` : `↓ ${macroData.ten_year_yield.change}`) : ''}
+            <span className="macro-val">{macroData?.ten_year_yield ? `${macroData.ten_year_yield.value}%` : '--'}
+              <span className={`badge ${macroData?.ten_year_yield?.change > 0 ? 'badge-down' : 'badge-up'}`}>
+                {macroData?.ten_year_yield ? (macroData.ten_year_yield.change > 0 ? `↑ ${macroData.ten_year_yield.change}` : `↓ ${macroData.ten_year_yield.change}`) : ''}
               </span>
             </span>
           </div>
           <div className="macro-row">
             <span className="macro-name">Unemployment</span>
-            <span className="macro-val">{macroData ? `${macroData.unemployment.value}%` : '--'}
-              <span className={`badge ${macroData && macroData.unemployment.change > 0 ? 'badge-down' : 'badge-up'}`}>
-                {macroData ? (macroData.unemployment.change > 0 ? '↑ Rising' : '↓ Falling') : ''}
+            <span className="macro-val">{macroData?.unemployment ? `${macroData.unemployment.value}%` : '--'}
+              <span className={`badge ${macroData?.unemployment?.change > 0 ? 'badge-down' : 'badge-up'}`}>
+                {macroData?.unemployment ? (macroData.unemployment.change > 0 ? '↑ Rising' : '↓ Falling') : ''}
               </span>
             </span>
           </div>
           <div className="macro-row">
             <span className="macro-name">VIX</span>
-            <span className="macro-val">{macroData ? macroData.vix.value : '--'}
-              <span className={`badge ${macroData && parseFloat(macroData.vix.value) > 20 ? 'badge-down' : 'badge-up'}`}>
-                {macroData ? (parseFloat(macroData.vix.value) > 20 ? 'Elevated' : 'Low') : ''}
+            <span className="macro-val">{macroData?.vix ? macroData.vix.value : '--'}
+              <span className={`badge ${macroData?.vix && parseFloat(macroData.vix.value) > 20 ? 'badge-down' : 'badge-up'}`}>
+                {macroData?.vix ? (parseFloat(macroData.vix.value) > 20 ? 'Elevated' : 'Low') : ''}
               </span>
             </span>
           </div>
           <div className="macro-row">
             <span className="macro-name">GDP</span>
-            <span className="macro-val">{macroData ? `$${(parseFloat(macroData.gdp.value) / 1000).toFixed(1)}T` : '--'}
-              <span className={`badge ${macroData && macroData.gdp.change > 0 ? 'badge-up' : 'badge-down'}`}>
-                {macroData ? (macroData.gdp.change > 0 ? '↑ Growing' : '↓ Shrinking') : ''}
+            <span className="macro-val">{macroData?.gdp ? `$${(parseFloat(macroData.gdp.value) / 1000).toFixed(1)}T` : '--'}
+              <span className={`badge ${macroData?.gdp?.change > 0 ? 'badge-up' : 'badge-down'}`}>
+                {macroData?.gdp ? (macroData.gdp.change > 0 ? '↑ Growing' : '↓ Shrinking') : ''}
               </span>
             </span>
           </div>
@@ -348,10 +348,12 @@ useEffect(() => {
 
         <div className="card">
           <div className="card-title">Market sentiment</div>
-          <div className="macro-row"><span className="macro-name">News tone</span><span className="macro-val up">72% positive</span></div>
-          <div className="macro-row"><span className="macro-name">Analyst buy</span><span className="macro-val up">81%</span></div>
-          <div className="macro-row"><span className="macro-name">Short interest</span><span className="macro-val down">21%</span></div>
-          <div className="macro-row"><span className="macro-name">Options skew</span><span className="macro-val up">Bullish</span></div>
+          <div className="macro-row"><span className="macro-name">Analyst rating</span><span className="macro-val">{stockData?.sentiment?.recommendation || '--'}</span></div>
+          <div className="macro-row"><span className="macro-name">Price target</span><span className="macro-val">{stockData?.sentiment?.target_price ? `$${stockData.sentiment.target_price}` : '--'}</span></div>
+          <div className="macro-row"><span className="macro-name">Short ratio</span><span className="macro-val">{stockData?.sentiment?.short_ratio || '--'}</span></div>
+          <div className="macro-row"><span className="macro-name">52w high</span><span className="macro-val up">{stockData?.sentiment?.fifty_two_high ? `$${stockData.sentiment.fifty_two_high}` : '--'}</span></div>
+          <div className="macro-row"><span className="macro-name">52w low</span><span className="macro-val down">{stockData?.sentiment?.fifty_two_low ? `$${stockData.sentiment.fifty_two_low}` : '--'}</span></div>
+          <div className="macro-row"><span className="macro-name">P/E ratio</span><span className="macro-val">{stockData?.sentiment?.pe_ratio || '--'}</span></div>
         </div>
       </div>
 
