@@ -19,24 +19,42 @@ app.add_middleware(
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 @app.get("/stock/{ticker}")
-def get_stock(ticker: str):
+def get_stock(ticker: str, range: str = "1mo"):
     stock = yf.Ticker(ticker)
-    hist = stock.history(period="1mo")
+    
+    range_map = {
+        "1d": ("1d", "5m"),
+        "1w": ("5d", "30m"),
+        "1mo": ("1mo", "1d"),
+        "6mo": ("6mo", "1d"),
+        "1y": ("1y", "1d"),
+        "ytd": ("ytd", "1d"),
+        "5y": ("5y", "1wk"),
+    }
+    
+    period, interval = range_map.get(range, ("1mo", "1d"))
+    hist = stock.history(period=period, interval=interval)
 
     prices = hist["Close"].round(2).tolist()
-    dates = hist.index.strftime("%b %d").tolist()
+    
+    if range == "1d":
+        dates = hist.index.strftime("%H:%M").tolist()
+    elif range == "1w":
+        dates = hist.index.strftime("%a %H:%M").tolist()
+    else:
+        dates = hist.index.strftime("%b %d").tolist()
+
     current = prices[-1]
     previous = prices[-2]
     change = round(current - previous, 2)
     change_pct = round((change / previous) * 100, 2)
 
     info = stock.info
-    market_cap = info.get("marketCap", "N/A")
     sector = info.get("sector", "N/A")
     company_name = info.get("shortName", ticker)
 
     prompt = f"""
-    You are a financial analyst. Analyze this stock data and explain in 3-4 concise bullet points why this stock is moving and what the outlook is.
+    You are a financial analyst. Analyze this stock data and explain in 3-4 concise bullet points why this stock is moving and what the outlook is. Do not include any headings or titles. Start directly with the first bullet point.
 
     Company: {company_name}
     Ticker: {ticker.upper()}
