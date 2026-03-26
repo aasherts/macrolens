@@ -414,3 +414,208 @@ body {
   color: #f87171;
   font-size: 11px;
 }
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #1a1a1a;
+  padding-bottom: 0;
+}
+
+.tab-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover {
+  color: #ffffff;
+}
+
+.tab-btn.active {
+  color: #ffffff;
+  border-bottom-color: #7eb8f7;
+}
+
+.signal-card {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 12px;
+}
+
+.signal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.signal-badge {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  letter-spacing: 0.3px;
+}
+
+.signal-badge.buy {
+  background: #052e16;
+  color: #4ade80;
+  border: 1px solid #14532d;
+}
+
+.signal-badge.sell {
+  background: #2d0a0a;
+  color: #f87171;
+  border: 1px solid #7f1d1d;
+}
+
+.signal-badge.hold {
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid #333;
+}
+
+.signal-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+
+.signal-subtitle {
+  font-size: 13px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.signal-stat {
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.signal-stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.signal-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+
+.signal-stat-sub {
+  font-size: 11px;
+  color: #555;
+  margin-top: 3px;
+}
+
+.signal-stat-value.pos { color: #4ade80; }
+.signal-stat-value.neg { color: #f87171; }
+.signal-stat-value.warn { color: #fbbf24; }
+
+.signal-section {
+  margin-bottom: 20px;
+}
+
+.signal-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.signal-rationale {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #888;
+}
+
+.signal-rationale p {
+  margin-bottom: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+.signal-rationale p:last-child {
+  margin-bottom: 0;
+}
+
+.rationale-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+.risk-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.risk-segment {
+  height: 6px;
+  flex: 1;
+  border-radius: 3px;
+  background: #1a1a1a;
+}
+
+.risk-segment.filled.low { background: #4ade80; }
+.risk-segment.filled.med { background: #fbbf24; }
+.risk-segment.filled.high { background: #f87171; }
+
+.confidence-bar {
+  height: 6px;
+  background: #1a1a1a;
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #3b82f6;
+}
+
+.disclaimer-signal {
+  font-size: 11px;
+  color: #333;
+  text-align: center;
+  padding: 12px;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  margin-top: 12px;
+}

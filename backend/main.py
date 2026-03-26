@@ -6,6 +6,7 @@ import yfinance as yf
 import anthropic
 import os
 import requests
+import json
 from dotenv import load_dotenv
 from database import init_db, get_db, Prediction
 
@@ -29,7 +30,6 @@ def search_tickers(query: str):
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
     data = response.json()
-
     results = []
     for quote_result in data.get("quotes", []):
         if quote_result.get("quoteType") in ["EQUITY", "ETF", "INDEX", "MUTUALFUND", "CRYPTOCURRENCY", "CURRENCY", "FUTURE"]:
@@ -39,13 +39,11 @@ def search_tickers(query: str):
                 "type": quote_result.get("quoteType", ""),
                 "exchange": quote_result.get("exchange", ""),
             })
-
     return {"results": results}
 
 @app.get("/macro")
 def get_macro():
     fred_key = os.getenv("FRED_API_KEY")
-
     series = {
         "fed_rate": "FEDFUNDS",
         "cpi": "CPIAUCSL",
@@ -54,7 +52,6 @@ def get_macro():
         "ten_year_yield": "GS10",
         "vix": "VIXCLS",
     }
-
     results = {}
     for name, series_id in series.items():
         url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={fred_key}&file_type=json&sort_order=desc&limit=2"
@@ -69,7 +66,6 @@ def get_macro():
                 "previous": previous,
                 "change": round(float(latest) - float(previous), 3) if latest != "." and previous != "." else 0
             }
-
     return results
 
 @app.get("/news/{ticker}")
@@ -79,7 +75,6 @@ def get_news(ticker: str, company: str = ""):
     url = f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&pageSize=5&language=en&apiKey={news_key}"
     response = requests.get(url)
     data = response.json()
-
     articles = []
     for article in data.get("articles", []):
         if article.get("title") and article.get("title") != "[Removed]":
@@ -89,7 +84,6 @@ def get_news(ticker: str, company: str = ""):
                 "url": article.get("url"),
                 "publishedAt": article.get("publishedAt", "")[:10],
             })
-
     return {"articles": articles}
 
 @app.get("/market-overview")
@@ -103,7 +97,6 @@ def get_market_overview():
         "VIX": "^VIX",
         "OIL": "CL=F",
     }
-
     results = []
     for name, symbol in tickers.items():
         try:
@@ -122,7 +115,6 @@ def get_market_overview():
                 })
         except:
             pass
-
     return {"items": results}
 
 @app.get("/predictions")
@@ -144,6 +136,85 @@ def get_predictions():
         "outcome": p.outcome,
         "error_pct": p.error_pct,
     } for p in predictions]
+
+@app.get("/signal/{ticker:path}")
+def get_signal(ticker: str):
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="3mo")
+    info = stock.info
+
+    prices = hist["Close"].round(2).tolist()
+    current = prices[-1]
+    company_name = info.get("shortName", ticker)
+    sector = info.get("sector", "N/A")
+    fifty_two_high = info.get("fiftyTwoWeekHigh", current)
+    fifty_two_low = info.get("fiftyTwoWeekLow", current)
+    target_price = info.get("targetMeanPrice", None)
+    recommendation = info.get("recommendationKey", "none")
+    pe_ratio = info.get("trailingPE", None)
+    beta = info.get("beta", None)
+
+    recent_7 = prices[-7:] if len(prices) >= 7 else prices
+    recent_30 = prices[-30:] if len(prices) >= 30 else prices
+    momentum_7d = round((recent_7[-1] - recent_7[0]) / recent_7[0] * 100, 2)
+    momentum_30d = round((recent_30[-1] - recent_30[0]) / recent_30[0] * 100, 2)
+    volatility = round((max(recent_30) - min(recent_30)) / min(recent_30) * 100, 2)
+    distance_from_52h = round((current - fifty_two_high) / fifty_two_high * 100, 2)
+    distance_from_52l = round((current - fifty_two_low) / fifty_two_low * 100, 2)
+
+    past_accuracy = ""
+    try:
+        db = get_db()
+        past = db.query(Prediction).filter(
+            Prediction.ticker == ticker.upper(),
+            Prediction.outcome != None
+        ).order_by(Prediction.predicted_at.desc()).limit(10).all()
+        if past:
+            correct = sum(1 for p in past if p.outcome in ["excellent", "good", "correct_direction"])
+            accuracy = round(correct / len(past) * 100)
+            past_accuracy = f"Historical prediction accuracy for {ticker.upper()}: {accuracy}% ({correct}/{len(past)} correct)."
+    except:
+        pass
+
+    prompt = (
+        "You are a senior Wall Street analyst. Generate a precise investment signal as a JSON object.\n\n"
+        f"Company: {company_name} ({ticker.upper()})\n"
+        f"Sector: {sector}\n"
+        f"Current price: ${current}\n"
+        f"7-day momentum: {momentum_7d}%\n"
+        f"30-day momentum: {momentum_30d}%\n"
+        f"30-day volatility: {volatility}%\n"
+        f"52-week high: ${fifty_two_high} ({distance_from_52h}% from high)\n"
+        f"52-week low: ${fifty_two_low} ({distance_from_52l}% from low)\n"
+        f"Analyst consensus: {recommendation}\n"
+        f"Analyst price target: ${target_price}\n"
+        f"P/E ratio: {pe_ratio}\n"
+        f"Beta: {beta}\n"
+        f"{past_accuracy}\n\n"
+        "Return ONLY a raw JSON object with these exact fields: "
+        "signal (BUY/SELL/HOLD), confidence (0-100), entry_price, entry_window, "
+        "exit_target, exit_timeframe, stop_loss, potential_return, max_risk, "
+        "risk_reward_ratio, position_size, risk_level (LOW/MEDIUM/HIGH), "
+        "time_horizon (SHORT/MEDIUM/LONG), rationale (array of 4 strings), "
+        "key_risks (array of 3 strings), catalysts (array of 2 strings). "
+        "No markdown, no backticks, no explanation. Raw JSON only."
+    )
+
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=1000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw = message.content[0].text.strip()
+    raw = raw.replace("```json", "").replace("```", "").strip()
+
+    try:
+        signal_data = json.loads(raw)
+    except:
+        signal_data = {"signal": "HOLD", "confidence": 50, "error": "Could not generate signal"}
+
+    return signal_data
 
 @app.get("/stock/{ticker:path}")
 def get_stock(ticker: str, range: str = "1mo"):
@@ -226,27 +297,22 @@ def get_stock(ticker: str, range: str = "1mo"):
 
     accuracy_context = ""
     if past_predictions:
-        accuracy_context = f"\n\nYour past predictions for {ticker.upper()}: " + "; ".join(past_predictions) + "\nUse this to calibrate your current prediction."
+        accuracy_context = "\n\nYour past predictions for " + ticker.upper() + ": " + "; ".join(past_predictions) + "\nUse this to calibrate your current prediction."
 
-    prompt = f"""
-    You are a financial analyst. Analyze this stock data and provide two things:
-
-    1. In 2-3 bullet points explain why this stock is currently moving the way it is.
-    2. In 1-2 bullet points explain specifically why you predict {direction} movement of {abs(pct_predicted)}% over the next 7 days.
-
-    Do not include any headings or titles. Start directly with the first bullet point.
-
-    Company: {company_name}
-    Ticker: {ticker.upper()}
-    Sector: {sector}
-    Current price: ${current}
-    Today's change: ${change} ({change_pct}%)
-    Recent 7-day trend: {direction} with avg daily move of ${round(avg_daily_change, 2)}
-    Price range (30d): ${min(prices[-30:] if len(prices) >= 30 else prices)} - ${max(prices[-30:] if len(prices) >= 30 else prices)}
-    7-day predicted price: ${pred_mid[-1]} ({pct_predicted}%){accuracy_context}
-
-    Be specific and data-driven. Write for a general audience.
-    """
+    prompt = (
+        "You are a financial analyst. Analyze this stock data and provide 2-3 bullet points explaining "
+        "why this stock is moving and 1-2 bullet points on the predicted outlook. "
+        "No headings. Start directly with the first bullet point.\n\n"
+        f"Company: {company_name}\n"
+        f"Ticker: {ticker.upper()}\n"
+        f"Sector: {sector}\n"
+        f"Current price: ${current}\n"
+        f"Today's change: ${change} ({change_pct}%)\n"
+        f"Recent 7-day trend: {direction} with avg daily move of ${round(avg_daily_change, 2)}\n"
+        f"Price range (30d): ${min(prices[-30:] if len(prices) >= 30 else prices)} - ${max(prices[-30:] if len(prices) >= 30 else prices)}\n"
+        f"7-day predicted price: ${pred_mid[-1]} ({pct_predicted}%)"
+        f"{accuracy_context}"
+    )
 
     message = client.messages.create(
         model="claude-opus-4-6",
