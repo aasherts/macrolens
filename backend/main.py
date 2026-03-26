@@ -39,6 +39,89 @@ def search_tickers(query: str):
 
     return {"results": results}
 
+@app.get("/market-overview")
+def get_market_overview():
+    tickers = {
+        "S&P 500": "^GSPC",
+        "NASDAQ": "^IXIC",
+        "DOW": "^DJI",
+        "BTC": "BTC-USD",
+        "GOLD": "GC=F",
+        "VIX": "^VIX",
+        "OIL": "CL=F",
+    }
+
+    results = []
+    for name, symbol in tickers.items():
+        try:
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period="2d")
+            if len(hist) >= 2:
+                current = round(hist["Close"].iloc[-1], 2)
+                previous = round(hist["Close"].iloc[-2], 2)
+                change = round(current - previous, 2)
+                change_pct = round((change / previous) * 100, 2)
+                results.append({
+                    "name": name,
+                    "price": current,
+                    "change": change,
+                    "change_pct": change_pct,
+                })
+        except:
+            pass
+
+    return {"items": results}
+
+@app.get("/macro")
+def get_macro():
+    fred_key = os.getenv("FRED_API_KEY")
+
+    series = {
+        "fed_rate": "FEDFUNDS",
+        "cpi": "CPIAUCSL",
+        "gdp": "GDP",
+        "unemployment": "UNRATE",
+        "ten_year_yield": "GS10",
+        "vix": "VIXCLS",
+    }
+
+    results = {}
+    for name, series_id in series.items():
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={fred_key}&file_type=json&sort_order=desc&limit=2"
+        response = requests.get(url)
+        data = response.json()
+        observations = data.get("observations", [])
+        if observations:
+            latest = observations[0]["value"]
+            previous = observations[1]["value"] if len(observations) > 1 else latest
+            results[name] = {
+                "value": latest,
+                "previous": previous,
+                "change": round(float(latest) - float(previous), 3) if latest != "." and previous != "." else 0
+            }
+
+    return results
+
+@app.get("/news/{ticker}")
+def get_news(ticker: str, company: str = ""):
+    news_key = os.getenv("NEWS_API_KEY")
+    query = company if company else ticker
+    url = f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&pageSize=5&language=en&apiKey={news_key}"
+    response = requests.get(url)
+    data = response.json()
+
+    articles = []
+    for article in data.get("articles", []):
+        if article.get("title") and article.get("title") != "[Removed]":
+            articles.append({
+                "title": article.get("title"),
+                "source": article.get("source", {}).get("name", ""),
+                "url": article.get("url"),
+                "publishedAt": article.get("publishedAt", "")[:10],
+            })
+
+    return {"articles": articles}
+
 @app.get("/stock/{ticker:path}")
 def get_stock(ticker: str, range: str = "1mo"):
     range_map = {
@@ -54,7 +137,7 @@ def get_stock(ticker: str, range: str = "1mo"):
     period, interval = range_map.get(range, ("1mo", "1d"))
     stock = yf.Ticker(ticker)
     hist = stock.history(period=period, interval=interval, prepost=True)
-    
+
     prices = hist["Close"].round(2).tolist()
 
     if range == "1d":
@@ -89,6 +172,22 @@ def get_stock(ticker: str, range: str = "1mo"):
     info = stock.info
     sector = info.get("sector", "N/A")
     company_name = info.get("shortName", ticker)
+    recommendation = info.get("recommendationKey", "none").capitalize()
+    target_price = info.get("targetMeanPrice", None)
+    short_ratio = info.get("shortRatio", None)
+    fifty_two_high = info.get("fiftyTwoWeekHigh", None)
+    fifty_two_low = info.get("fiftyTwoWeekLow", None)
+    pe_ratio = info.get("trailingPE", None)
+    market_cap = info.get("marketCap", None)
+
+    def format_market_cap(mc):
+        if not mc:
+            return "N/A"
+        if mc >= 1_000_000_000_000:
+            return f"${mc/1_000_000_000_000:.2f}T"
+        if mc >= 1_000_000_000:
+            return f"${mc/1_000_000_000:.2f}B"
+        return f"${mc/1_000_000:.2f}M"
 
     prompt = f"""
     You are a financial analyst. Analyze this stock data and provide two things:
@@ -134,6 +233,15 @@ def get_stock(ticker: str, range: str = "1mo"):
             "low": pred_low,
             "direction": direction,
             "pct": pct_predicted,
+        },
+        "sentiment": {
+            "recommendation": recommendation,
+            "target_price": round(target_price, 2) if target_price else None,
+            "short_ratio": round(short_ratio, 1) if short_ratio else None,
+            "fifty_two_high": fifty_two_high,
+            "fifty_two_low": fifty_two_low,
+            "pe_ratio": round(pe_ratio, 1) if pe_ratio else None,
+            "market_cap": format_market_cap(market_cap),
         }
     }
     

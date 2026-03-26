@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "chartjs-plugin-crosshair": "^2.0.0"
+  }
+}

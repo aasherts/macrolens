@@ -43,6 +43,18 @@ function App() {
   const [macroData, setMacroData] = useState(null);
   const [newsData, setNewsData] = useState([]);
   const chartRef = useRef(null);
+  const [marketData, setMarketData] = useState([]);
+
+  useEffect(() => {
+  const fetchMarket = () => {
+    fetch('http://127.0.0.1:8000/market-overview')
+      .then(res => res.json())
+      .then(data => setMarketData(data.items || []));
+  };
+  fetchMarket();
+  const interval = setInterval(fetchMarket, 60000);
+  return () => clearInterval(interval);
+}, []);
 
   useEffect(() => {
     setStockData(null);
@@ -176,6 +188,19 @@ function App() {
 
   return (
     <div className="app">
+      {marketData.length > 0 && (
+        <div className="ticker-bar">
+          {marketData.map((item, i) => (
+            <div key={i} className="ticker-item">
+              <span className="ticker-name">{item.name}</span>
+              <span className="ticker-price">${item.price.toLocaleString()}</span>
+              <span className={item.change >= 0 ? 'ticker-up' : 'ticker-down'}>
+                {item.change >= 0 ? '+' : ''}{item.change_pct}%
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="topbar">
         <div className="brand">macro<span>lens</span></div>
         <div style={{flex:1, position:'relative'}}>
