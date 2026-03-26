@@ -1,13 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import quote
+from datetime import datetime, timedelta
 import yfinance as yf
 import anthropic
 import os
 import requests
 from dotenv import load_dotenv
+from database import init_db, get_db, Prediction
 
 load_dotenv()
+init_db()
 
 app = FastAPI()
 
@@ -38,39 +41,6 @@ def search_tickers(query: str):
             })
 
     return {"results": results}
-
-@app.get("/market-overview")
-def get_market_overview():
-    tickers = {
-        "S&P 500": "^GSPC",
-        "NASDAQ": "^IXIC",
-        "DOW": "^DJI",
-        "BTC": "BTC-USD",
-        "GOLD": "GC=F",
-        "VIX": "^VIX",
-        "OIL": "CL=F",
-    }
-
-    results = []
-    for name, symbol in tickers.items():
-        try:
-            stock = yf.Ticker(symbol)
-            hist = stock.history(period="2d")
-            if len(hist) >= 2:
-                current = round(hist["Close"].iloc[-1], 2)
-                previous = round(hist["Close"].iloc[-2], 2)
-                change = round(current - previous, 2)
-                change_pct = round((change / previous) * 100, 2)
-                results.append({
-                    "name": name,
-                    "price": current,
-                    "change": change,
-                    "change_pct": change_pct,
-                })
-        except:
-            pass
-
-    return {"items": results}
 
 @app.get("/macro")
 def get_macro():
@@ -121,6 +91,59 @@ def get_news(ticker: str, company: str = ""):
             })
 
     return {"articles": articles}
+
+@app.get("/market-overview")
+def get_market_overview():
+    tickers = {
+        "S&P 500": "^GSPC",
+        "NASDAQ": "^IXIC",
+        "DOW": "^DJI",
+        "BTC": "BTC-USD",
+        "GOLD": "GC=F",
+        "VIX": "^VIX",
+        "OIL": "CL=F",
+    }
+
+    results = []
+    for name, symbol in tickers.items():
+        try:
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period="2d")
+            if len(hist) >= 2:
+                current = round(hist["Close"].iloc[-1], 2)
+                previous = round(hist["Close"].iloc[-2], 2)
+                change = round(current - previous, 2)
+                change_pct = round((change / previous) * 100, 2)
+                results.append({
+                    "name": name,
+                    "price": current,
+                    "change": change,
+                    "change_pct": change_pct,
+                })
+        except:
+            pass
+
+    return {"items": results}
+
+@app.get("/predictions")
+def get_predictions():
+    db = get_db()
+    predictions = db.query(Prediction).order_by(Prediction.predicted_at.desc()).limit(20).all()
+    return [{
+        "id": p.id,
+        "ticker": p.ticker,
+        "company_name": p.company_name,
+        "predicted_at": str(p.predicted_at),
+        "price_at_prediction": p.price_at_prediction,
+        "predicted_price": p.predicted_price,
+        "predicted_pct": p.predicted_pct,
+        "predicted_direction": p.predicted_direction,
+        "check_date": p.check_date,
+        "actual_price": p.actual_price,
+        "actual_pct": p.actual_pct,
+        "outcome": p.outcome,
+        "error_pct": p.error_pct,
+    } for p in predictions]
 
 @app.get("/stock/{ticker:path}")
 def get_stock(ticker: str, range: str = "1mo"):
@@ -189,11 +212,27 @@ def get_stock(ticker: str, range: str = "1mo"):
             return f"${mc/1_000_000_000:.2f}B"
         return f"${mc/1_000_000:.2f}M"
 
+    past_predictions = []
+    try:
+        db = get_db()
+        past = db.query(Prediction).filter(
+            Prediction.ticker == ticker.upper(),
+            Prediction.outcome != None
+        ).order_by(Prediction.predicted_at.desc()).limit(5).all()
+        for p in past:
+            past_predictions.append(f"Predicted {p.predicted_direction} {p.predicted_pct}%, actual was {p.actual_pct}% — {p.outcome}")
+    except:
+        pass
+
+    accuracy_context = ""
+    if past_predictions:
+        accuracy_context = f"\n\nYour past predictions for {ticker.upper()}: " + "; ".join(past_predictions) + "\nUse this to calibrate your current prediction."
+
     prompt = f"""
     You are a financial analyst. Analyze this stock data and provide two things:
 
     1. In 2-3 bullet points explain why this stock is currently moving the way it is.
-    2. In 1-2 bullet points explain specifically why you predict {direction} movement of {abs(pct_predicted)}% over the next 7 days, referencing the momentum and any macro factors.
+    2. In 1-2 bullet points explain specifically why you predict {direction} movement of {abs(pct_predicted)}% over the next 7 days.
 
     Do not include any headings or titles. Start directly with the first bullet point.
 
@@ -204,7 +243,7 @@ def get_stock(ticker: str, range: str = "1mo"):
     Today's change: ${change} ({change_pct}%)
     Recent 7-day trend: {direction} with avg daily move of ${round(avg_daily_change, 2)}
     Price range (30d): ${min(prices[-30:] if len(prices) >= 30 else prices)} - ${max(prices[-30:] if len(prices) >= 30 else prices)}
-    7-day predicted price: ${pred_mid[-1]} ({pct_predicted}%)
+    7-day predicted price: ${pred_mid[-1]} ({pct_predicted}%){accuracy_context}
 
     Be specific and data-driven. Write for a general audience.
     """
@@ -216,6 +255,24 @@ def get_stock(ticker: str, range: str = "1mo"):
     )
 
     analysis = message.content[0].text
+
+    try:
+        db = get_db()
+        check_date = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d")
+        new_prediction = Prediction(
+            ticker=ticker.upper(),
+            company_name=company_name,
+            price_at_prediction=current,
+            predicted_price=pred_mid[-1],
+            predicted_pct=pct_predicted,
+            predicted_direction=direction,
+            check_date=check_date,
+            ai_reasoning=analysis,
+        )
+        db.add(new_prediction)
+        db.commit()
+    except Exception as e:
+        print(f"DB error: {e}")
 
     return {
         "ticker": ticker.upper(),
