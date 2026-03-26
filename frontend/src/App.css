@@ -299,3 +299,34 @@ body {
   padding: 2px 6px;
   border-radius: 4px;
 }
+.watchlist {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.watch-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #222222;
+  background: transparent;
+  color: #777777;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.watch-btn:hover {
+  color: #ffffff;
+  border-color: #444444;
+}
+
+.watch-btn.active {
+  background: #111111;
+  color: #7eb8f7;
+  border-color: #7eb8f7;
+}

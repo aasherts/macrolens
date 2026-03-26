@@ -197,6 +197,17 @@ function App() {
             </div>
           )}
         </div>
+        <div className="watchlist">
+          {['AAPL', 'TSLA', 'NVDA', 'SPY', 'BTC-USD', 'GC=F'].map(w => (
+            <button
+              key={w}
+              className={`watch-btn ${ticker === w ? 'active' : ''}`}
+              onClick={() => { setTicker(w); setInput(w); }}
+            >
+              {w === 'GC=F' ? 'GOLD' : w === 'BTC-USD' ? 'BTC' : w}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="metrics">
