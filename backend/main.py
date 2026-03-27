@@ -18,7 +18,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "https://macrolens-sigma.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -413,4 +413,3 @@ def get_stock(ticker: str, range: str = "1mo"):
     }
     set_cached(cache_key, result)
     return result
-    
