@@ -73,7 +73,7 @@ function App() {
         .then(res => res.json())
         .then(data => setNewsData(data.articles || []));
     }
-  }, [stockData]);
+  }, [stockData, ticker]);
 
   useEffect(() => {
     const fetchMarket = () => {
@@ -95,7 +95,7 @@ function App() {
         .then(res => res.json())
         .then(data => { setSignalData(data); setSignalLoading(false); });
     }
-  }, [activeTab, ticker, horizon]);
+  }, [activeTab, ticker, horizon, customDays]);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -346,7 +346,7 @@ function App() {
                   stockData.analysis.split('\n').filter(line => line.trim()).map((line, i) => (
                     <div key={i} className="why-item">
                       <span className="bullet">•</span>
-                      <span>{line.replace(/^[•\-\*]\s*/, '').replace(/\*\*/g, '')}</span>
+                      <span>{line.replace(/^[•\-*]\s*/, '').replace(/\*\*/g, '')}</span>
                     </div>
                   ))
                 ) : <p style={{color:'#555', fontSize:'13px'}}>Loading analysis...</p>}
