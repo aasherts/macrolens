@@ -56,20 +56,20 @@ function App() {
     setSignalData(null);
     setHoverPrice(null);
     setHoverTime(null);
-    fetch(`http://127.0.0.1:8000/stock/${ticker}?range=${range}`)
+    fetch(`https://macrolens-backend.onrender.com/stock/${ticker}?range=${range}`)
       .then(res => res.json())
       .then(data => setStockData(data));
   }, [ticker, range]);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/macro')
+    fetch('https://macrolens-backend.onrender.com/macro')
       .then(res => res.json())
       .then(data => setMacroData(data));
   }, []);
 
   useEffect(() => {
     if (stockData) {
-      fetch(`http://127.0.0.1:8000/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
+      fetch(`https://macrolens-backend.onrender.com/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
         .then(res => res.json())
         .then(data => setNewsData(data.articles || []));
     }
@@ -77,7 +77,7 @@ function App() {
 
   useEffect(() => {
     const fetchMarket = () => {
-      fetch('http://127.0.0.1:8000/market-overview')
+      fetch('https://macrolens-backend.onrender.com/market-overview')
         .then(res => res.json())
         .then(data => setMarketData(data.items || []));
     };
@@ -91,7 +91,7 @@ function App() {
       setSignalLoading(true);
       setSignalData(null);
       const days = horizon === 'day' ? 1 : horizon === 'week' ? 7 : customDays;
-      fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${horizon}&days=${days}`)
+      fetch(`https://macrolens-backend.onrender.com/signal/${ticker}?horizon=${horizon}&days=${days}`)
         .then(res => res.json())
         .then(data => { setSignalData(data); setSignalLoading(false); });
     }
@@ -101,7 +101,7 @@ function App() {
     const val = e.target.value;
     setInput(val);
     if (val.length > 1) {
-      fetch(`http://127.0.0.1:8000/search/${val}`)
+      fetch(`https://macrolens-backend.onrender.com/search/${val}`)
         .then(res => res.json())
         .then(data => { setSearchResults(data.results); setShowDropdown(true); });
     } else {
@@ -119,7 +119,7 @@ function App() {
   const fetchSignal = (h, d) => {
     setSignalLoading(true);
     setSignalData(null);
-    fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${h}&days=${d}`)
+    fetch(`https://macrolens-backend.onrender.com/signal/${ticker}?horizon=${h}&days=${d}`)
       .then(res => res.json())
       .then(data => { setSignalData(data); setSignalLoading(false); });
   };
