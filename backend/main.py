@@ -18,7 +18,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://macrolens-sigma.vercel.app"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
