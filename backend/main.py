@@ -7,6 +7,7 @@ import anthropic
 import os
 import requests
 import json
+import time
 from dotenv import load_dotenv
 from database import init_db, get_db, Prediction
 
@@ -23,6 +24,19 @@ app.add_middleware(
 )
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+cache = {}
+CACHE_TTL = 300
+
+def get_cached(key):
+    if key in cache:
+        data, timestamp = cache[key]
+        if time.time() - timestamp < CACHE_TTL:
+            return data
+    return None
+
+def set_cached(key, data):
+    cache[key] = (data, time.time())
 
 @app.get("/search/{query}")
 def search_tickers(query: str):
@@ -43,6 +57,9 @@ def search_tickers(query: str):
 
 @app.get("/macro")
 def get_macro():
+    cached = get_cached("macro")
+    if cached:
+        return cached
     fred_key = os.getenv("FRED_API_KEY")
     series = {
         "fed_rate": "FEDFUNDS",
@@ -66,6 +83,7 @@ def get_macro():
                 "previous": previous,
                 "change": round(float(latest) - float(previous), 3) if latest != "." and previous != "." else 0
             }
+    set_cached("macro", results)
     return results
 
 @app.get("/news/{ticker}")
@@ -88,6 +106,9 @@ def get_news(ticker: str, company: str = ""):
 
 @app.get("/market-overview")
 def get_market_overview():
+    cached = get_cached("market-overview")
+    if cached:
+        return cached
     tickers = {
         "S&P 500": "^GSPC",
         "NASDAQ": "^IXIC",
@@ -115,7 +136,9 @@ def get_market_overview():
                 })
         except:
             pass
-    return {"items": results}
+    result = {"items": results}
+    set_cached("market-overview", result)
+    return result
 
 @app.get("/predictions")
 def get_predictions():
@@ -138,7 +161,12 @@ def get_predictions():
     } for p in predictions]
 
 @app.get("/signal/{ticker:path}")
-def get_signal(ticker: str):
+def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
+    cache_key = f"signal_{ticker}_{horizon}_{days}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     stock = yf.Ticker(ticker)
     hist = stock.history(period="3mo")
     info = stock.info
@@ -176,8 +204,18 @@ def get_signal(ticker: str):
     except:
         pass
 
+    horizon_instructions = {
+        "day": "This is a DAY TRADE signal for same-day entry and exit. Focus on intraday momentum and tight levels. Entry window is today. Stop loss should be 0.5-1.5% max. Exit target 0.5-2% upside. Position size should be larger since timeframe is short.",
+        "week": f"This is a SWING TRADE signal for a {days}-day hold. Focus on short-term momentum, technical breakouts, support/resistance levels. Entry window in next 1-2 days. Stop loss 2-4%. Exit target 3-8%.",
+        "medium": f"This is a POSITION TRADE for a {days}-day hold. Focus on fundamentals, macro environment, and medium-term catalysts. Wider stop loss 5-8%. Exit target 10-20%.",
+        "custom": f"This is a CUSTOM timeframe signal for exactly {days} days. Calibrate ALL price targets, stop losses, position sizing, and rationale specifically and precisely for a {days}-day holding period. Be very specific about the {days}-day timeframe throughout.",
+    }
+
+    horizon_text = horizon_instructions.get(horizon, horizon_instructions["medium"])
+
     prompt = (
-        "You are a senior Wall Street analyst. Generate a precise investment signal as a JSON object.\n\n"
+        f"You are a senior Wall Street analyst. {horizon_text}\n\n"
+        "Generate a precise investment signal as a JSON object.\n\n"
         f"Company: {company_name} ({ticker.upper()})\n"
         f"Sector: {sector}\n"
         f"Current price: ${current}\n"
@@ -214,10 +252,16 @@ def get_signal(ticker: str):
     except:
         signal_data = {"signal": "HOLD", "confidence": 50, "error": "Could not generate signal"}
 
+    set_cached(cache_key, signal_data)
     return signal_data
 
 @app.get("/stock/{ticker:path}")
 def get_stock(ticker: str, range: str = "1mo"):
+    cache_key = f"{ticker}_{range}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     range_map = {
         "1d": ("1d", "5m"),
         "1w": ("5d", "30m"),
@@ -340,7 +384,7 @@ def get_stock(ticker: str, range: str = "1mo"):
     except Exception as e:
         print(f"DB error: {e}")
 
-    return {
+    result = {
         "ticker": ticker.upper(),
         "company_name": company_name,
         "current": current,
@@ -367,4 +411,6 @@ def get_stock(ticker: str, range: str = "1mo"):
             "market_cap": format_market_cap(market_cap),
         }
     }
+    set_cached(cache_key, result)
+    return result
     

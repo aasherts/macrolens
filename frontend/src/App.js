@@ -46,6 +46,9 @@ function App() {
   const [newsData, setNewsData] = useState([]);
   const [marketData, setMarketData] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [horizon, setHorizon] = useState('medium');
+  const [customDays, setCustomDays] = useState(30);
+  const [showCustom, setShowCustom] = useState(false);
   const chartRef = useRef(null);
 
   useEffect(() => {
@@ -84,13 +87,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'signal' && !signalData && ticker) {
+    if (activeTab === 'signal' && ticker) {
       setSignalLoading(true);
-      fetch(`http://127.0.0.1:8000/signal/${ticker}`)
+      setSignalData(null);
+      const days = horizon === 'day' ? 1 : horizon === 'week' ? 7 : customDays;
+      fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${horizon}&days=${days}`)
         .then(res => res.json())
         .then(data => { setSignalData(data); setSignalLoading(false); });
     }
-  }, [activeTab, ticker]);
+  }, [activeTab, ticker, horizon]);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -109,6 +114,27 @@ function App() {
     setInput(symbol);
     setShowDropdown(false);
     setSearchResults([]);
+  };
+
+  const fetchSignal = (h, d) => {
+    setSignalLoading(true);
+    setSignalData(null);
+    fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${h}&days=${d}`)
+      .then(res => res.json())
+      .then(data => { setSignalData(data); setSignalLoading(false); });
+  };
+
+  const handleHorizon = (h) => {
+    setHorizon(h);
+    setShowCustom(h === 'custom');
+    if (h !== 'custom') {
+      const days = h === 'day' ? 1 : h === 'week' ? 7 : 30;
+      fetchSignal(h, days);
+    }
+  };
+
+  const handleCustomSubmit = () => {
+    fetchSignal('custom', customDays);
   };
 
   const last = stockData ? stockData.prices[stockData.prices.length - 1] : null;
@@ -296,7 +322,16 @@ function App() {
                 ))}
               </div>
               <div className="chart-wrapper">
-                {stockData ? <Line ref={chartRef} data={priceData} options={chartOptions} /> : <div className="loading">Loading...</div>}
+                {stockData ? <Line ref={chartRef} data={priceData} options={chartOptions} /> : (
+                  <div className="loading">
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:'13px', color:'#555', marginBottom:'8px'}}>Fetching market data and generating AI analysis...</div>
+                      <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+                        <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{display:'flex', gap:'16px', marginTop:'10px', fontSize:'11px', color:'#555'}}>
                 <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#7eb8f7', display:'inline-block'}}></span>Actual</span>
@@ -357,10 +392,53 @@ function App() {
 
       {activeTab === 'signal' && (
         <div>
+          <div className="horizon-selector">
+            <button className={`horizon-btn ${horizon === 'day' ? 'active' : ''}`} onClick={() => handleHorizon('day')}>
+              Day trade
+              <div className="horizon-label">Same day entry/exit</div>
+            </button>
+            <button className={`horizon-btn ${horizon === 'week' ? 'active' : ''}`} onClick={() => handleHorizon('week')}>
+              Swing trade
+              <div className="horizon-label">3-7 day hold</div>
+            </button>
+            <button className={`horizon-btn ${horizon === 'medium' ? 'active' : ''}`} onClick={() => handleHorizon('medium')}>
+              Position trade
+              <div className="horizon-label">30 day hold</div>
+            </button>
+            <button className={`horizon-btn ${horizon === 'custom' ? 'active' : ''}`} onClick={() => handleHorizon('custom')}>
+              Custom
+              <div className="horizon-label">Set your timeframe</div>
+            </button>
+          </div>
+
+          {showCustom && (
+            <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px', background:'#111', border:'1px solid #1a1a1a', borderRadius:'10px', padding:'14px 16px'}}>
+              <span style={{fontSize:'13px', color:'#888'}}>Hold for</span>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={customDays}
+                onChange={e => setCustomDays(parseInt(e.target.value))}
+                style={{width:'80px', background:'#0a0a0a', border:'1px solid #333', borderRadius:'6px', padding:'6px 10px', color:'#fff', fontSize:'14px', fontWeight:'500', outline:'none'}}
+              />
+              <span style={{fontSize:'13px', color:'#888'}}>days</span>
+              <button
+                onClick={handleCustomSubmit}
+                style={{padding:'7px 16px', background:'#3b82f6', border:'none', borderRadius:'6px', color:'#fff', fontSize:'13px', fontWeight:'600', cursor:'pointer', fontFamily:'Inter, sans-serif'}}
+              >
+                Generate signal
+              </button>
+            </div>
+          )}
+
           {signalLoading && (
             <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
               <div style={{fontSize:'14px', color:'#555'}}>Generating AI investment signal...</div>
-              <div style={{fontSize:'12px', color:'#333', marginTop:'8px'}}>Analysing momentum, macro environment, and historical patterns</div>
+              <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Analysing momentum, macro environment, and historical patterns</div>
+              <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+                <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+              </div>
             </div>
           )}
 
@@ -373,7 +451,9 @@ function App() {
                   </div>
                   <div>
                     <div className="signal-title">{stockData?.company_name || ticker} — AI investment signal</div>
-                    <div className="signal-subtitle">{signalData.time_horizon} term · {signalData.risk_level} risk · Generated {new Date().toLocaleDateString()}</div>
+                    <div className="signal-subtitle">
+                      {horizon === 'day' ? 'Day trade' : horizon === 'week' ? 'Swing trade' : horizon === 'custom' ? `${customDays}-day custom` : 'Position trade'} · {signalData.risk_level} risk · Generated {new Date().toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
 
