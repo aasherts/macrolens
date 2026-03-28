@@ -16,9 +16,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 # Initialize Firebase Admin
-service_account_path = os.path.join(os.path.dirname(__file__), "firebase-service-account.json")
-if os.path.exists(service_account_path) and not firebase_admin._apps:
-    cred = credentials.Certificate(service_account_path)
+if not firebase_admin._apps:
+    service_account_path = os.path.join(os.path.dirname(__file__), "firebase-service-account.json")
+    if os.path.exists(service_account_path):
+        cred = credentials.Certificate(service_account_path)
+    else:
+        import json
+        service_account_info = json.loads(os.getenv("FIREBASE_SERVICE_ACCOUNT", "{}"))
+        cred = credentials.Certificate(service_account_info)
     firebase_admin.initialize_app(cred)
 
 def hash_password(password: str) -> str:
