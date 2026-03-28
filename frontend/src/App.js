@@ -60,8 +60,9 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [userWatchlist, setUserWatchlist] = useState([]);
+  const [showWatchlistPanel, setShowWatchlistPanel] = useState(false);
   const chartRef = useRef(null);
-
+  
   useEffect(() => {
     setStockData(null);
     setSignalData(null);
@@ -363,10 +364,34 @@ function App() {
         <div style={{display:'flex', gap:'8px', alignItems:'center', marginLeft:'12px'}}>
           {user ? (
             <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
-              <div className="user-pill">
-                <div className="user-avatar">{user.username[0].toUpperCase()}</div>
-                {user.username}
-              </div>
+              <div className="user-pill" style={{position:'relative'}} onClick={() => setShowWatchlistPanel(prev => !prev)}>
+  <div className="user-avatar">{user.username[0].toUpperCase()}</div>
+  {user.username}
+  {showWatchlistPanel && (
+    <div style={{
+      position:'absolute', top:'36px', right:'0', width:'220px',
+      background:'#0e0e0e', border:'1px solid #1a1a1a', borderRadius:'12px',
+      padding:'12px', zIndex:1000, boxShadow:'0 8px 32px rgba(0,0,0,0.5)'
+    }} onClick={e => e.stopPropagation()}>
+      <div style={{fontSize:'11px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', marginBottom:'10px'}}>Saved watchlist</div>
+      {userWatchlist.length === 0 ? (
+        <div style={{fontSize:'12px', color:'#555'}}>No saved tickers yet</div>
+      ) : (
+        userWatchlist.map((w, i) => (
+          <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom: i < userWatchlist.length - 1 ? '1px solid #1a1a1a' : 'none'}}>
+            <span style={{fontSize:'13px', color:'#fff', cursor:'pointer', fontWeight:'500'}}
+              onClick={() => { setTicker(w.ticker); setInput(w.ticker); setShowWatchlistPanel(false); }}>
+              {w.ticker}
+            </span>
+            <span style={{fontSize:'11px', color:'#555', flex:1, marginLeft:'8px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{w.company_name}</span>
+            <span style={{fontSize:'11px', color:'#f87171', cursor:'pointer', marginLeft:'8px'}}
+              onClick={() => handleRemoveFromWatchlist(w.ticker)}>✕</span>
+          </div>
+        ))
+      )}
+    </div>
+  )}
+</div>
               <button className="auth-btn" onClick={handleLogout}>Sign out</button>
             </div>
           ) : (
