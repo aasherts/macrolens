@@ -188,6 +188,29 @@ def get_me(current_user_id: str = Depends(get_current_user)):
     if not current_user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     db = get_db()
+
+    if current_user_id.startswith("firebase:"):
+        parts = current_user_id.split(":", 2)
+        firebase_uid = parts[1]
+        email = parts[2] if len(parts) > 2 else ""
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            username = email.split("@")[0] if email else firebase_uid[:8]
+            user = User(
+                email=email,
+                username=username,
+                hashed_password=hash_password(firebase_uid)
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        watchlist = db.query(WatchlistItem).filter(WatchlistItem.user_id == user.id).all()
+        return {
+            "username": user.username,
+            "email": user.email,
+            "watchlist": [{"ticker": w.ticker, "company_name": w.company_name} for w in watchlist]
+        }
+
     user = db.query(User).filter(User.id == int(current_user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -203,14 +226,25 @@ def add_to_watchlist(req: WatchlistRequest, current_user_id: str = Depends(get_c
     if not current_user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     db = get_db()
+
+    if current_user_id.startswith("firebase:"):
+        parts = current_user_id.split(":", 2)
+        email = parts[2] if len(parts) > 2 else ""
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_id = user.id
+    else:
+        user_id = int(current_user_id)
+
     existing = db.query(WatchlistItem).filter(
-        WatchlistItem.user_id == int(current_user_id),
+        WatchlistItem.user_id == user_id,
         WatchlistItem.ticker == req.ticker.upper()
     ).first()
     if existing:
         return {"message": "Already in watchlist"}
     item = WatchlistItem(
-        user_id=int(current_user_id),
+        user_id=user_id,
         ticker=req.ticker.upper(),
         company_name=req.company_name
     )
@@ -223,8 +257,19 @@ def remove_from_watchlist(ticker: str, current_user_id: str = Depends(get_curren
     if not current_user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     db = get_db()
+
+    if current_user_id.startswith("firebase:"):
+        parts = current_user_id.split(":", 2)
+        email = parts[2] if len(parts) > 2 else ""
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_id = user.id
+    else:
+        user_id = int(current_user_id)
+
     item = db.query(WatchlistItem).filter(
-        WatchlistItem.user_id == int(current_user_id),
+        WatchlistItem.user_id == user_id,
         WatchlistItem.ticker == ticker.upper()
     ).first()
     if item:

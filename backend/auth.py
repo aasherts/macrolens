@@ -2,8 +2,11 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
+import os
 
 SECRET_KEY = "macrolens-secret-key-2026-change-in-production"
 ALGORITHM = "HS256"
@@ -11,6 +14,12 @@ ACCESS_TOKEN_EXPIRE_DAYS = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
+
+# Initialize Firebase Admin
+service_account_path = os.path.join(os.path.dirname(__file__), "firebase-service-account.json")
+if os.path.exists(service_account_path) and not firebase_admin._apps:
+    cred = credentials.Certificate(service_account_path)
+    firebase_admin.initialize_app(cred)
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -31,8 +40,25 @@ def decode_token(token: str) -> Optional[str]:
     except JWTError:
         return None
 
+def verify_firebase_token(token: str) -> Optional[dict]:
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+        return decoded
+    except Exception:
+        return None
+
 def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[str]:
     if not token:
         return None
-    return decode_token(token)
     
+    # Try our custom JWT first
+    user_id = decode_token(token)
+    if user_id:
+        return user_id
+    
+    # Try Firebase token
+    firebase_data = verify_firebase_token(token)
+    if firebase_data:
+        return f"firebase:{firebase_data.get('uid')}:{firebase_data.get('email', '')}"
+    
+    return None
