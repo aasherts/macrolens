@@ -475,7 +475,34 @@ function App() {
         <>
           <div className="main-grid">
             <div className="card" onMouseLeave={() => { setHoverPrice(null); setHoverTime(null); if(chartRef.current) { chartRef.current._crosshairX = null; chartRef.current.draw(); }}}>
-              <div className="card-title">Price chart — {stockData ? stockData.company_name : '...'}</div>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px'}}>
+  <div className="card-title" style={{marginBottom:0}}>Price chart — {stockData ? stockData.company_name : '...'}</div>
+  {stockData && (
+    <button
+      onClick={() => {
+        const isInWatchlist = userWatchlist.some(w => w.ticker === ticker.toUpperCase());
+        if (isInWatchlist) {
+          handleRemoveFromWatchlist(ticker);
+        } else {
+          handleAddToWatchlist(ticker, stockData.company_name);
+        }
+      }}
+      style={{
+        padding:'6px 12px',
+        borderRadius:'6px',
+        border: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '1px solid #3b82f6' : '1px solid #1a1a1a',
+        background: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#111' : 'transparent',
+        color: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#7eb8f7' : '#555',
+        fontSize:'11px',
+        fontWeight:'600',
+        cursor:'pointer',
+        fontFamily:'Inter, sans-serif',
+      }}
+    >
+      {userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '★ Saved' : '☆ Save'}
+    </button>
+  )}
+</div>
               <div className="range-selector">
                 {ranges.map(r => (
                   <button key={r} className={`range-btn ${range === r ? 'active' : ''}`} onClick={() => setRange(r)}>
