@@ -624,3 +624,48 @@ body {
   50% { width: 60%; margin-left: 20%; }
   100% { width: 0%; margin-left: 100%; }
 }
+.horizon-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.horizon-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #1a1a1a;
+  background: #0e0e0e;
+  color: #555;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.horizon-btn:hover {
+  border-color: #333;
+  color: #ffffff;
+  background: #111;
+}
+
+.horizon-btn.active {
+  background: #111;
+  border-color: #3b82f6;
+  color: #7eb8f7;
+}
+
+.horizon-label {
+  font-size: 10px;
+  color: #444;
+  margin-top: 3px;
+  font-weight: 400;
+  display: block;
+}
+
+.horizon-btn.active .horizon-label {
+  color: #3b82f6;
+}
