@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -8,6 +8,22 @@ import os
 import requests
 import json
 import time
+from auth import hash_password, verify_password, create_token, get_current_user
+from pydantic import BaseModel
+
+class RegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class WatchlistRequest(BaseModel):
+    ticker: str
+    company_name: str = ""
+from database import init_db, get_db, Prediction, User, WatchlistItem
 from dotenv import load_dotenv
 from database import init_db, get_db, Prediction
 
@@ -139,6 +155,82 @@ def get_market_overview():
     result = {"items": results}
     set_cached("market-overview", result)
     return result
+
+@app.post("/register")
+def register(req: RegisterRequest):
+    db = get_db()
+    if db.query(User).filter(User.email == req.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.query(User).filter(User.username == req.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken")
+    user = User(
+        email=req.email,
+        username=req.username,
+        hashed_password=hash_password(req.password)
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_token({"sub": str(user.id)})
+    return {"token": token, "username": user.username, "email": user.email}
+
+@app.post("/login")
+def login(req: LoginRequest):
+    db = get_db()
+    user = db.query(User).filter(User.email == req.email).first()
+    if not user or not verify_password(req.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_token({"sub": str(user.id)})
+    return {"token": token, "username": user.username, "email": user.email}
+
+@app.get("/me")
+def get_me(current_user_id: str = Depends(get_current_user)):
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = get_db()
+    user = db.query(User).filter(User.id == int(current_user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    watchlist = db.query(WatchlistItem).filter(WatchlistItem.user_id == user.id).all()
+    return {
+        "username": user.username,
+        "email": user.email,
+        "watchlist": [{"ticker": w.ticker, "company_name": w.company_name} for w in watchlist]
+    }
+
+@app.post("/watchlist/add")
+def add_to_watchlist(req: WatchlistRequest, current_user_id: str = Depends(get_current_user)):
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = get_db()
+    existing = db.query(WatchlistItem).filter(
+        WatchlistItem.user_id == int(current_user_id),
+        WatchlistItem.ticker == req.ticker.upper()
+    ).first()
+    if existing:
+        return {"message": "Already in watchlist"}
+    item = WatchlistItem(
+        user_id=int(current_user_id),
+        ticker=req.ticker.upper(),
+        company_name=req.company_name
+    )
+    db.add(item)
+    db.commit()
+    return {"message": "Added to watchlist"}
+
+@app.delete("/watchlist/remove/{ticker}")
+def remove_from_watchlist(ticker: str, current_user_id: str = Depends(get_current_user)):
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = get_db()
+    item = db.query(WatchlistItem).filter(
+        WatchlistItem.user_id == int(current_user_id),
+        WatchlistItem.ticker == ticker.upper()
+    ).first()
+    if item:
+        db.delete(item)
+        db.commit()
+    return {"message": "Removed from watchlist"}
 
 @app.get("/predictions")
 def get_predictions():

@@ -10,6 +10,8 @@ import {
   Filler,
   Tooltip,
 } from 'chart.js';
+import { signInWithGoogle, signOutUser, auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
@@ -49,6 +51,15 @@ function App() {
   const [horizon, setHorizon] = useState('medium');
   const [customDays, setCustomDays] = useState(30);
   const [showCustom, setShowCustom] = useState(false);
+  const [user, setUser] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [userWatchlist, setUserWatchlist] = useState([]);
   const chartRef = useRef(null);
 
   useEffect(() => {
@@ -56,28 +67,28 @@ function App() {
     setSignalData(null);
     setHoverPrice(null);
     setHoverTime(null);
-    fetch(`https://macrolens-backend.onrender.com/stock/${ticker}?range=${range}`)
+    fetch(`http://127.0.0.1:8000/stock/${ticker}?range=${range}`)
       .then(res => res.json())
       .then(data => setStockData(data));
   }, [ticker, range]);
 
   useEffect(() => {
-    fetch('https://macrolens-backend.onrender.com/macro')
+    fetch('http://127.0.0.1:8000/macro')
       .then(res => res.json())
       .then(data => setMacroData(data));
   }, []);
 
   useEffect(() => {
     if (stockData) {
-      fetch(`https://macrolens-backend.onrender.com/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
+      fetch(`http://127.0.0.1:8000/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
         .then(res => res.json())
         .then(data => setNewsData(data.articles || []));
     }
-  }, [stockData, ticker]);
+  }, [stockData]);
 
   useEffect(() => {
     const fetchMarket = () => {
-      fetch('https://macrolens-backend.onrender.com/market-overview')
+      fetch('http://127.0.0.1:8000/market-overview')
         .then(res => res.json())
         .then(data => setMarketData(data.items || []));
     };
@@ -91,17 +102,40 @@ function App() {
       setSignalLoading(true);
       setSignalData(null);
       const days = horizon === 'day' ? 1 : horizon === 'week' ? 7 : customDays;
-      fetch(`https://macrolens-backend.onrender.com/signal/${ticker}?horizon=${horizon}&days=${days}`)
+      fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${horizon}&days=${days}`)
         .then(res => res.json())
         .then(data => { setSignalData(data); setSignalLoading(false); });
     }
-  }, [activeTab, ticker, horizon, customDays]);
+  }, [activeTab, ticker, horizon]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const token = await firebaseUser.getIdToken();
+        localStorage.setItem('macrolens_token', token);
+        setUser({ username: firebaseUser.displayName || firebaseUser.email.split('@')[0], email: firebaseUser.email });
+        fetch('http://127.0.0.1:8000/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => { if (data.watchlist) setUserWatchlist(data.watchlist); })
+          .catch(() => {});
+      } else {
+        const token = localStorage.getItem('macrolens_token');
+        const savedUser = localStorage.getItem('macrolens_user');
+        if (token && savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleInput = (e) => {
     const val = e.target.value;
     setInput(val);
     if (val.length > 1) {
-      fetch(`https://macrolens-backend.onrender.com/search/${val}`)
+      fetch(`http://127.0.0.1:8000/search/${val}`)
         .then(res => res.json())
         .then(data => { setSearchResults(data.results); setShowDropdown(true); });
     } else {
@@ -119,7 +153,7 @@ function App() {
   const fetchSignal = (h, d) => {
     setSignalLoading(true);
     setSignalData(null);
-    fetch(`https://macrolens-backend.onrender.com/signal/${ticker}?horizon=${h}&days=${d}`)
+    fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${h}&days=${d}`)
       .then(res => res.json())
       .then(data => { setSignalData(data); setSignalLoading(false); });
   };
@@ -135,6 +169,64 @@ function App() {
 
   const handleCustomSubmit = () => {
     fetchSignal('custom', customDays);
+  };
+
+  const handleAuth = async () => {
+    setAuthLoading(true);
+    setAuthError('');
+    const url = authMode === 'login' ? 'http://127.0.0.1:8000/login' : 'http://127.0.0.1:8000/register';
+    const body = authMode === 'login'
+      ? { email: authEmail, password: authPassword }
+      : { email: authEmail, username: authUsername, password: authPassword };
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.detail || 'Something went wrong');
+      } else {
+        localStorage.setItem('macrolens_token', data.token);
+        localStorage.setItem('macrolens_user', JSON.stringify({ username: data.username, email: data.email }));
+        setUser({ username: data.username, email: data.email });
+        setShowAuth(false);
+        setAuthEmail(''); setAuthPassword(''); setAuthUsername(''); setAuthError('');
+      }
+    } catch {
+      setAuthError('Connection error');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = async () => {
+    try { await signOutUser(); } catch {}
+    localStorage.removeItem('macrolens_token');
+    localStorage.removeItem('macrolens_user');
+    setUser(null);
+    setUserWatchlist([]);
+  };
+
+  const handleAddToWatchlist = async (tickerSymbol, companyName) => {
+    const token = localStorage.getItem('macrolens_token');
+    if (!token) { setShowAuth(true); return; }
+    await fetch('http://127.0.0.1:8000/watchlist/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ticker: tickerSymbol, company_name: companyName })
+    });
+    setUserWatchlist(prev => [...prev.filter(w => w.ticker !== tickerSymbol.toUpperCase()), { ticker: tickerSymbol.toUpperCase(), company_name: companyName }]);
+  };
+
+  const handleRemoveFromWatchlist = async (tickerSymbol) => {
+    const token = localStorage.getItem('macrolens_token');
+    if (!token) return;
+    await fetch(`http://127.0.0.1:8000/watchlist/remove/${tickerSymbol}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    setUserWatchlist(prev => prev.filter(w => w.ticker !== tickerSymbol.toUpperCase()));
   };
 
   const last = stockData ? stockData.prices[stockData.prices.length - 1] : null;
@@ -268,7 +360,77 @@ function App() {
             </button>
           ))}
         </div>
+        <div style={{display:'flex', gap:'8px', alignItems:'center', marginLeft:'12px'}}>
+          {user ? (
+            <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
+              <div className="user-pill">
+                <div className="user-avatar">{user.username[0].toUpperCase()}</div>
+                {user.username}
+              </div>
+              <button className="auth-btn" onClick={handleLogout}>Sign out</button>
+            </div>
+          ) : (
+            <>
+              <button className="auth-btn" onClick={() => { setAuthMode('login'); setShowAuth(true); }}>Sign in</button>
+              <button className="auth-btn primary" onClick={() => { setAuthMode('register'); setShowAuth(true); }}>Sign up</button>
+            </>
+          )}
+        </div>
       </div>
+
+      {showAuth && (
+        <div className="auth-modal-overlay" onClick={(e) => { if(e.target === e.currentTarget) setShowAuth(false); }}>
+          <div className="auth-modal">
+            <div className="auth-modal-title">{authMode === 'login' ? 'Welcome back' : 'Create account'}</div>
+            <div className="auth-modal-sub">{authMode === 'login' ? 'Sign in to access your saved watchlist' : 'Save your watchlist and preferences'}</div>
+
+            <button
+              className="auth-btn"
+              style={{width:'100%', padding:'12px', marginBottom:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', boxSizing:'border-box'}}
+              onClick={async () => {
+                try {
+                  await signInWithGoogle();
+                  setShowAuth(false);
+                } catch(e) {
+                  setAuthError('Google sign-in failed');
+                }
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Continue with Google
+            </button>
+
+            <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
+              <div style={{flex:1, height:'1px', background:'#1a1a1a'}}></div>
+              <span style={{fontSize:'11px', color:'#444'}}>or</span>
+              <div style={{flex:1, height:'1px', background:'#1a1a1a'}}></div>
+            </div>
+
+            {authMode === 'register' && (
+              <div className="auth-field">
+                <label>Username</label>
+                <input placeholder="e.g. aasher" value={authUsername} onChange={e => setAuthUsername(e.target.value)} />
+              </div>
+            )}
+            <div className="auth-field">
+              <label>Email</label>
+              <input type="email" placeholder="your@email.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+            </div>
+            <div className="auth-field">
+              <label>Password</label>
+              <input type="password" placeholder="••••••••" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAuth()} />
+            </div>
+            {authError && <div className="auth-error">{authError}</div>}
+            <button className="auth-btn primary" style={{width:'100%', padding:'12px', boxSizing:'border-box'}} onClick={handleAuth} disabled={authLoading}>
+              {authLoading ? 'Loading...' : authMode === 'login' ? 'Sign in' : 'Create account'}
+            </button>
+            <div className="auth-switch">
+              {authMode === 'login' ? <>No account? <span onClick={() => { setAuthMode('register'); setAuthError(''); }}>Sign up</span></> : <>Already have an account? <span onClick={() => { setAuthMode('login'); setAuthError(''); }}>Sign in</span></>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="metrics">
         <div className="metric-card">
@@ -346,7 +508,7 @@ function App() {
                   stockData.analysis.split('\n').filter(line => line.trim()).map((line, i) => (
                     <div key={i} className="why-item">
                       <span className="bullet">•</span>
-                      <span>{line.replace(/^[•\-*]\s*/, '').replace(/\*\*/g, '')}</span>
+                      <span>{line.replace(/^[•\-\*]\s*/, '').replace(/\*\*/g, '')}</span>
                     </div>
                   ))
                 ) : <p style={{color:'#555', fontSize:'13px'}}>Loading analysis...</p>}

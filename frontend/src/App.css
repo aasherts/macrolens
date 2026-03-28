@@ -669,3 +669,152 @@ body {
 .horizon-btn.active .horizon-label {
   color: #3b82f6;
 }
+.auth-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #1a1a1a;
+  background: transparent;
+  color: #888;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+}
+
+.auth-btn:hover {
+  border-color: #333;
+  color: #fff;
+}
+
+.auth-btn.primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.auth-btn.primary:hover {
+  background: #2563eb;
+}
+
+.auth-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.auth-modal {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 16px;
+  padding: 32px;
+  width: 400px;
+  max-width: 90vw;
+}
+
+.auth-modal-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.auth-modal-sub {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 24px;
+}
+
+.auth-field {
+  margin-bottom: 16px;
+}
+
+.auth-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.auth-field input {
+  width: 100%;
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.auth-field input:focus {
+  border-color: #3b82f6;
+}
+
+.auth-error {
+  font-size: 12px;
+  color: #f87171;
+  margin-bottom: 16px;
+}
+
+.auth-switch {
+  font-size: 12px;
+  color: #555;
+  text-align: center;
+  margin-top: 16px;
+}
+
+.auth-switch span {
+  color: #7eb8f7;
+  cursor: pointer;
+}
+
+.auth-switch span:hover {
+  color: #fff;
+}
+
+.user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #888;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+}
+
+.user-pill:hover {
+  border-color: #333;
+  color: #fff;
+}
+
+.user-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
