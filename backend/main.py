@@ -138,7 +138,7 @@ def run_sp500_screen():
             try:
                 import time as time_module
                 data = yf.download(batch, period="35d", interval="1d", group_by="ticker", auto_adjust=True, progress=False)
-                time_module.sleep(2)
+                time_module.sleep(5)
                 
                 for t in batch:
                     try:
@@ -196,13 +196,18 @@ import threading
 
 def _background_screen():
     import time
-    time.sleep(5)
-    while True:
-        try:
-            run_sp500_screen()
-        except Exception as e:
-            print(f"Background screen error: {e}")
-        time.sleep(900)
+    import os
+    if os.getenv("RENDER"):
+        time.sleep(30)
+        while True:
+            try:
+                run_sp500_screen()
+            except Exception as e:
+                print(f"Background screen error: {e}")
+            time.sleep(900)
+    else:
+        time.sleep(10)
+        run_sp500_screen()
 
 threading.Thread(target=_background_screen, daemon=True).start()
 
