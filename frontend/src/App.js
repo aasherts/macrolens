@@ -1055,6 +1055,167 @@ const handleFindTrade = async () => {
     )}
   </div>
 )}
+{activeTab === 'finder' && (
+  <div>
+    <div className="portfolio-input">
+      <div className="portfolio-input-title">Trade finder</div>
+      <div className="portfolio-input-sub">Tell us what you want to achieve and we'll find the best trade for you from the S&P 500</div>
+
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', marginBottom:'16px'}}>
+        <div className="auth-field">
+          <label>Capital to invest ($)</label>
+          <input className="holding-input" placeholder="e.g. 500 (optional)" type="number" value={finderCapital} onChange={e => setFinderCapital(e.target.value)} />
+        </div>
+        <div className="auth-field">
+          <label>Profit target ($)</label>
+          <input className="holding-input" placeholder="e.g. 50 (optional)" type="number" value={finderProfitDollars} onChange={e => setFinderProfitDollars(e.target.value)} />
+        </div>
+        <div className="auth-field">
+          <label>Return target (%)</label>
+          <input className="holding-input" placeholder="e.g. 10 (optional)" type="number" value={finderProfitPct} onChange={e => setFinderProfitPct(e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', marginBottom:'16px'}}>
+        <div className="auth-field">
+          <label>Timeframe</label>
+          <select className="holding-input" value={finderTimeframe} onChange={e => setFinderTimeframe(e.target.value)} style={{cursor:'pointer'}}>
+            <option value="day">Day trade (today)</option>
+            <option value="week">Swing trade (1 week)</option>
+            <option value="month">Position trade (1 month)</option>
+            <option value="year">Long term (1 year)</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div className="auth-field">
+          <label>Risk tolerance</label>
+          <select className="holding-input" value={finderRisk} onChange={e => setFinderRisk(e.target.value)} style={{cursor:'pointer'}}>
+            <option value="low">Low — preserve capital</option>
+            <option value="medium">Medium — balanced</option>
+            <option value="high">High — maximise return</option>
+          </select>
+        </div>
+        <div className="auth-field">
+          <label>Preference</label>
+          <select className="holding-input" value={finderPreference} onChange={e => setFinderPreference(e.target.value)} style={{cursor:'pointer'}}>
+            <option value="any">Any sector</option>
+            <option value="technology">Technology</option>
+            <option value="energy">Energy</option>
+            <option value="healthcare">Healthcare</option>
+            <option value="financials">Financials</option>
+            <option value="consumer">Consumer</option>
+            <option value="industrials">Industrials</option>
+            <option value="utilities">Utilities</option>
+          </select>
+        </div>
+      </div>
+
+      {finderTimeframe === 'custom' && (
+        <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
+          <span style={{fontSize:'13px', color:'#888'}}>Hold for</span>
+          <input type="number" min="1" max="365" value={finderCustomDays} onChange={e => setFinderCustomDays(parseInt(e.target.value))}
+            style={{width:'80px', background:'#0a0a0a', border:'1px solid #333', borderRadius:'6px', padding:'6px 10px', color:'#fff', fontSize:'14px', fontWeight:'500', outline:'none'}} />
+          <span style={{fontSize:'13px', color:'#888'}}>days</span>
+        </div>
+      )}
+
+      <button className="auth-btn primary" style={{padding:'10px 24px'}} onClick={handleFindTrade} disabled={finderLoading}>
+        {finderLoading ? 'Finding best trade...' : 'Find best trade'}
+      </button>
+    </div>
+
+    {finderLoading && (
+      <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
+        <div style={{fontSize:'14px', color:'#555'}}>Scanning S&P 500 for your best trade...</div>
+        <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Matching your criteria against top momentum stocks</div>
+        <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+          <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+        </div>
+      </div>
+    )}
+
+    {finderResult && !finderLoading && !finderResult.error && (
+      <div className="signal-card">
+        <div className="signal-header">
+          <div className={`signal-badge ${finderResult.risk_level === 'LOW' ? 'buy' : finderResult.risk_level === 'HIGH' ? 'sell' : 'hold'}`}>
+            {finderResult.risk_level} RISK
+          </div>
+          <div>
+            <div className="signal-title">{finderResult.ticker} — {finderResult.company_name}</div>
+            <div className="signal-subtitle">Best match for your criteria · {finderResult.confidence}% confidence</div>
+          </div>
+          <button className="auth-btn primary" style={{marginLeft:'auto', padding:'8px 16px'}}
+            onClick={() => { setTicker(finderResult.ticker); setInput(finderResult.ticker); setActiveTab('overview'); }}>
+            View full analysis →
+          </button>
+        </div>
+
+        <div className="signal-grid">
+          <div className="signal-stat">
+            <div className="signal-stat-label">Entry price</div>
+            <div className="signal-stat-value">${finderResult.entry_price}</div>
+            <div className="signal-stat-sub">{finderResult.entry_window}</div>
+          </div>
+          <div className="signal-stat">
+            <div className="signal-stat-label">Exit price</div>
+            <div className="signal-stat-value pos">${finderResult.exit_price}</div>
+            <div className="signal-stat-sub">{finderResult.exit_window}</div>
+          </div>
+          <div className="signal-stat">
+            <div className="signal-stat-label">Stop loss</div>
+            <div className="signal-stat-value neg">${finderResult.stop_loss}</div>
+            <div className="signal-stat-sub">Max loss protection</div>
+          </div>
+          {finderResult.shares && (
+            <div className="signal-stat">
+              <div className="signal-stat-label">Shares to buy</div>
+              <div className="signal-stat-value warn">{finderResult.shares}</div>
+              <div className="signal-stat-sub">Total cost ${finderResult.total_cost}</div>
+            </div>
+          )}
+          <div className="signal-stat">
+            <div className="signal-stat-label">Projected profit</div>
+            <div className="signal-stat-value pos">${finderResult.projected_profit}</div>
+            <div className="signal-stat-sub">If exit hit</div>
+          </div>
+          <div className="signal-stat">
+            <div className="signal-stat-label">Projected return</div>
+            <div className="signal-stat-value pos">+{finderResult.projected_return_pct}%</div>
+            <div className="signal-stat-sub">On this trade</div>
+          </div>
+        </div>
+
+        <div className="signal-section" style={{marginTop:'20px'}}>
+          <div className="signal-section-title">Why this trade</div>
+          <div className="signal-rationale">
+            {finderResult.rationale?.map((r, i) => (
+              <p key={i}><span className="rationale-dot" style={{background:'#4ade80'}}></span><span>{r}</span></p>
+            ))}
+          </div>
+        </div>
+
+        <div className="signal-section" style={{marginTop:'16px'}}>
+          <div className="signal-section-title">Key risks</div>
+          <div className="signal-rationale">
+            {finderResult.risks?.map((r, i) => (
+              <p key={i}><span className="rationale-dot" style={{background:'#f87171'}}></span><span>{r}</span></p>
+            ))}
+          </div>
+        </div>
+
+        <div className="disclaimer-signal" style={{marginTop:'16px'}}>
+          This recommendation is for educational purposes only and does not constitute financial advice. Always do your own research before investing.
+        </div>
+      </div>
+    )}
+
+    {finderResult?.error && !finderLoading && (
+      <div className="signal-card" style={{textAlign:'center', padding:'40px'}}>
+        <div style={{fontSize:'14px', color:'#f87171'}}>{finderResult.error}</div>
+      </div>
+    )}
+  </div>
+)}
 
 {activeTab === 'fundamentals' && (
         <div className="bottom-grid" style={{gridTemplateColumns:'repeat(2,1fr)'}}>
@@ -1083,8 +1244,8 @@ const handleFindTrade = async () => {
       )}
       <div className="support-banner">
         <div className="support-banner-text">
-  <strong>MacroLens is free, forever.</strong> If it's helped you make a better decision, consider supporting financial literacy education for students who can't afford it.
-  {donateClicks > 0 && <span style={{color:'#4ade80', marginLeft:'8px', fontSize:'12px'}}>♥ {donateClicks} people have supported so far</span>}
+  <strong>MacroLens is free, forever.</strong> If MacroLens has helped you make a decision, consider to support financial literacy for students who can't afford it.
+  {donateClicks > 0 && <span style={{color:'#4ade80', marginLeft:'8px', fontSize:'12px', whiteSpace:'nowrap'}}>♥ {donateClicks} supported</span>}
 </div>
         <a href="https://www.juniorachievement.org/web/ja-usa/donate"
   target="_blank"
