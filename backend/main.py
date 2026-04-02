@@ -663,6 +663,122 @@ def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
     set_cached(cache_key, signal_data)
     return signal_data
 
+@app.post("/trade-finder")
+def find_trade(body: dict = Body(...)):
+    capital = body.get("capital", None)
+    profit_target_dollars = body.get("profit_target_dollars", None)
+    profit_target_pct = body.get("profit_target_pct", None)
+    timeframe = body.get("timeframe", "week")
+    days = body.get("days", 7)
+    risk_tolerance = body.get("risk_tolerance", "medium")
+    preference = body.get("preference", "any")
+
+    candidates = top_picks_cache.get("data", [])
+    
+    if not candidates:
+        raise HTTPException(status_code=503, detail="Market scan not ready yet, try again in 60 seconds")
+
+    candidate_details = []
+    for c in candidates[:8]:
+        try:
+            stock = yf.Ticker(c["ticker"])
+            hist = stock.history(period="1mo")
+            info = stock.info
+            prices = hist["Close"].tolist()
+            current = prices[-1]
+            beta = info.get("beta", 1.0) or 1.0
+            target = info.get("targetMeanPrice", None)
+            avg_daily = (prices[-1] - prices[-5]) / 5 if len(prices) >= 5 else 0
+            projected = current + (avg_daily * days)
+            projected_pct = (projected - current) / current * 100
+            shares_possible = int(capital / current) if capital else None
+            projected_profit = round(shares_possible * (projected - current), 2) if shares_possible else None
+            candidate_details.append({
+                "ticker": c["ticker"],
+                "company_name": c["company_name"],
+                "sector": c["sector"],
+                "current_price": round(current, 2),
+                "projected_price": round(projected, 2),
+                "projected_pct": round(projected_pct, 2),
+                "projected_profit": projected_profit,
+                "shares_possible": shares_possible,
+                "beta": round(beta, 2),
+                "mom_7d": c["mom_7d"],
+                "mom_30d": c["mom_30d"],
+                "analyst_target": round(target, 2) if target else None,
+            })
+        except:
+            continue
+
+    constraints = []
+    if capital:
+        constraints.append(f"Available capital: ${capital}")
+    if profit_target_dollars:
+        constraints.append(f"Profit target: ${profit_target_dollars}")
+    if profit_target_pct:
+        constraints.append(f"Return target: {profit_target_pct}%")
+    constraints.append(f"Timeframe: {days} days ({timeframe})")
+    constraints.append(f"Risk tolerance: {risk_tolerance}")
+    constraints.append(f"Preference: {preference}")
+
+    candidates_text = "\n".join([
+        f"- {c['ticker']} ({c['company_name']}): ${c['current_price']}, "
+        f"projected {c['projected_pct']}% in {days}d, "
+        f"beta {c['beta']}, 7d momentum {c['mom_7d']}%, "
+        f"{'projected profit $' + str(c['projected_profit']) + ' on ' + str(c['shares_possible']) + ' shares' if c['projected_profit'] else 'no capital specified'}"
+        for c in candidate_details
+    ])
+
+    prompt = (
+        "You are a trading advisor. A user has provided their investment constraints and you must recommend the single best trade from the candidates below.\n\n"
+        "User constraints:\n" + "\n".join(constraints) + "\n\n"
+        f"Available candidates (from S&P 500 momentum screen):\n{candidates_text}\n\n"
+        "Respond with ONLY a raw JSON object with these fields:\n"
+        '{"ticker":"SYMBOL","company_name":"Full name","current_price":123.45,"entry_price":123.45,'
+        '"entry_window":"e.g. Today at market open","exit_price":130.00,"exit_window":"e.g. In 3 days",'
+        '"shares":10,"total_cost":1234.50,"projected_profit":65.50,"projected_return_pct":5.3,'
+        '"stop_loss":118.00,"risk_level":"LOW","confidence":75,'
+        '"rationale":["reason 1","reason 2","reason 3"],"risks":["risk 1","risk 2"]}'
+        "\nNo markdown, no backticks, raw JSON only."
+    )
+
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=800,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw = message.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+    
+    try:
+        result = json.loads(raw)
+    except:
+        result = {"error": "Could not generate recommendation"}
+    
+    return result
+
+@app.post("/donate-click")
+def log_donate_click():
+    try:
+        db = get_db()
+        from database import Base
+        from sqlalchemy import Column, Integer, DateTime
+        # Simple counter in cache
+        donate_cache = get_cached("donate_clicks")
+        if donate_cache:
+            count = donate_cache + 1
+        else:
+            count = 1
+        set_cached("donate_clicks", count)
+        return {"clicks": count}
+    except:
+        return {"clicks": 0}
+
+@app.get("/donate-clicks")
+def get_donate_clicks():
+    count = get_cached("donate_clicks") or 0
+    return {"clicks": count}
+
 @app.get("/stock/{ticker:path}")
 def get_stock(ticker: str, range: str = "1mo"):
     cache_key = f"{ticker}_{range}"

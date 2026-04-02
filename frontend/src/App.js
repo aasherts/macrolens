@@ -53,6 +53,7 @@ function App() {
   const [showCustom, setShowCustom] = useState(false);
   const [user, setUser] = useState(null);
   const [showAuth, setShowAuth] = useState(false);
+  const [donateClicks, setDonateClicks] = useState(0);
   const [authMode, setAuthMode] = useState('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authUsername, setAuthUsername] = useState('');
@@ -61,6 +62,16 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [userWatchlist, setUserWatchlist] = useState([]);
   const [showWatchlistPanel, setShowWatchlistPanel] = useState(false);
+  const [finderCapital, setFinderCapital] = useState('');
+const [finderProfitDollars, setFinderProfitDollars] = useState('');
+const [finderProfitPct, setFinderProfitPct] = useState('');
+const [finderTimeframe, setFinderTimeframe] = useState('week');
+const [finderDays, setFinderDays] = useState(7);
+const [finderRisk, setFinderRisk] = useState('medium');
+const [finderPreference, setFinderPreference] = useState('any');
+const [finderResult, setFinderResult] = useState(null);
+const [finderLoading, setFinderLoading] = useState(false);
+const [finderCustomDays, setFinderCustomDays] = useState(7);
   const [topPicks, setTopPicks] = useState([]);
 const [topPicksUpdated, setTopPicksUpdated] = useState('');
 const [portfolio, setPortfolio] = useState([
@@ -138,6 +149,12 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+  fetch('http://127.0.0.1:8000/donate-clicks')
+    .then(res => res.json())
+    .then(data => setDonateClicks(data.clicks || 0));
+}, []);
 
   useEffect(() => {
   if (activeTab === 'picks') {
@@ -353,6 +370,31 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   }
   setPortfolioLoading(false);
 };
+const handleFindTrade = async () => {
+  setFinderLoading(true);
+  setFinderResult(null);
+  const days = finderTimeframe === 'day' ? 1 : finderTimeframe === 'week' ? 7 : finderTimeframe === 'month' ? 30 : finderTimeframe === 'year' ? 365 : finderCustomDays;
+  try {
+    const res = await fetch('http://127.0.0.1:8000/trade-finder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        capital: finderCapital ? parseFloat(finderCapital) : null,
+        profit_target_dollars: finderProfitDollars ? parseFloat(finderProfitDollars) : null,
+        profit_target_pct: finderProfitPct ? parseFloat(finderProfitPct) : null,
+        timeframe: finderTimeframe,
+        days: days,
+        risk_tolerance: finderRisk,
+        preference: finderPreference,
+      })
+    });
+    const data = await res.json();
+    setFinderResult(data);
+  } catch(e) {
+    console.error(e);
+  }
+  setFinderLoading(false);
+};
 
   return (
     <div className="app">
@@ -536,6 +578,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   <button className={`tab-btn ${activeTab === 'signal' ? 'active' : ''}`} onClick={() => setActiveTab('signal')}>Signal</button>
   <button className={`tab-btn ${activeTab === 'picks' ? 'active' : ''}`} onClick={() => setActiveTab('picks')}>Top picks</button>
   <button className={`tab-btn ${activeTab === 'portfolio' ? 'active' : ''}`} onClick={() => setActiveTab('portfolio')}>Portfolio</button>
+  <button className={`tab-btn ${activeTab === 'finder' ? 'active' : ''}`} onClick={() => setActiveTab('finder')}>Trade finder</button>
   <button className={`tab-btn ${activeTab === 'fundamentals' ? 'active' : ''}`} onClick={() => setActiveTab('fundamentals')}>Fundamentals</button>
 </div>
 
@@ -1012,6 +1055,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
     )}
   </div>
 )}
+
 {activeTab === 'fundamentals' && (
         <div className="bottom-grid" style={{gridTemplateColumns:'repeat(2,1fr)'}}>
           <div className="card">
@@ -1037,7 +1081,22 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
           </div>
         </div>
       )}
-
+      <div className="support-banner">
+        <div className="support-banner-text">
+  <strong>MacroLens is free, forever.</strong> If it's helped you make a better decision, consider supporting financial literacy education for students who can't afford it.
+  {donateClicks > 0 && <span style={{color:'#4ade80', marginLeft:'8px', fontSize:'12px'}}>♥ {donateClicks} people have supported so far</span>}
+</div>
+        <a href="https://www.juniorachievement.org/web/ja-usa/donate"
+  target="_blank"
+  rel="noreferrer"
+  className="support-btn"
+  onClick={() => {
+    fetch('http://127.0.0.1:8000/donate-click', { method: 'POST' });
+  }}
+>
+  ♥ Donate to Junior Achievement
+</a>
+      </div>
       <div className="disclaimer">MacroLens outputs are probabilistic signals for educational purposes only — not financial advice.</div>
     </div>
   );
