@@ -1244,7 +1244,7 @@ const handleFindTrade = async () => {
       <div className="support-banner">
         <div className="support-banner-text">
   <strong>MacroLens is free, forever.</strong> If MacroLens has helped you make a decision, consider to support financial literacy for students who can't afford it.
-  {donateClicks > 0 && <span style={{color:'#4ade80', marginLeft:'8px', fontSize:'12px', whiteSpace:'nowrap'}}>♥ {donateClicks} supported</span>}
+  {donateClicks > 0 && <span style={{color:'#4ade80', marginLeft:'8px', fontSize:'12px', whiteSpace:'nowrap'}}>♥ {donateClicks} people have supported so far</span>}
 </div>
         <a href="https://www.juniorachievement.org/web/ja-usa/donate"
   target="_blank"
