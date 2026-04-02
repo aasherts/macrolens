@@ -66,7 +66,6 @@ function App() {
 const [finderProfitDollars, setFinderProfitDollars] = useState('');
 const [finderProfitPct, setFinderProfitPct] = useState('');
 const [finderTimeframe, setFinderTimeframe] = useState('week');
-const [finderDays, setFinderDays] = useState(7);
 const [finderRisk, setFinderRisk] = useState('medium');
 const [finderPreference, setFinderPreference] = useState('any');
 const [finderResult, setFinderResult] = useState(null);
