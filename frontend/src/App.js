@@ -61,6 +61,13 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [userWatchlist, setUserWatchlist] = useState([]);
   const [showWatchlistPanel, setShowWatchlistPanel] = useState(false);
+  const [topPicks, setTopPicks] = useState([]);
+const [topPicksUpdated, setTopPicksUpdated] = useState('');
+const [portfolio, setPortfolio] = useState([
+  { ticker: '', shares: '', avg_cost: '' }
+]);
+const [portfolioResults, setPortfolioResults] = useState(null);
+const [portfolioLoading, setPortfolioLoading] = useState(false);
   const chartRef = useRef(null);
   
   useEffect(() => {
@@ -131,6 +138,17 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+  if (activeTab === 'picks') {
+    fetch('http://127.0.0.1:8000/top-picks')
+      .then(res => res.json())
+      .then(data => {
+        setTopPicks(data.picks || []);
+        setTopPicksUpdated(data.last_updated || '');
+      });
+  }
+}, [activeTab]);
 
   const handleInput = (e) => {
     const val = e.target.value;
@@ -313,6 +331,29 @@ function App() {
     return 3;
   };
 
+  const handlePortfolioAnalysis = async () => {
+  const validHoldings = portfolio.filter(h => h.ticker && h.shares && h.avg_cost);
+  if (validHoldings.length === 0) return;
+  setPortfolioLoading(true);
+  setPortfolioResults(null);
+  try {
+    const res = await fetch('http://127.0.0.1:8000/portfolio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holdings: validHoldings.map(h => ({
+        ticker: h.ticker.toUpperCase(),
+        shares: parseFloat(h.shares),
+        avg_cost: parseFloat(h.avg_cost)
+      }))})
+    });
+    const data = await res.json();
+    setPortfolioResults(data);
+  } catch(e) {
+    console.error(e);
+  }
+  setPortfolioLoading(false);
+};
+
   return (
     <div className="app">
       {marketData.length > 0 && (
@@ -480,7 +521,7 @@ function App() {
           <div className="metric-change">{stockData?.sentiment?.recommendation || '--'}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">AI signal</div>
+          <div className="metric-label">Signal</div>
           <div className={`metric-value ${signalData?.signal === 'BUY' ? 'up' : signalData?.signal === 'SELL' ? 'down' : ''}`}>
             {signalData ? signalData.signal : (activeTab === 'signal' ? 'Loading...' : 'View signal')}
           </div>
@@ -490,11 +531,13 @@ function App() {
         </div>
       </div>
 
-      <div className="tabs">
-        <button className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
-        <button className={`tab-btn ${activeTab === 'signal' ? 'active' : ''}`} onClick={() => setActiveTab('signal')}>AI signal</button>
-        <button className={`tab-btn ${activeTab === 'fundamentals' ? 'active' : ''}`} onClick={() => setActiveTab('fundamentals')}>Fundamentals</button>
-      </div>
+     <div className="tabs">
+  <button className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
+  <button className={`tab-btn ${activeTab === 'signal' ? 'active' : ''}`} onClick={() => setActiveTab('signal')}>Signal</button>
+  <button className={`tab-btn ${activeTab === 'picks' ? 'active' : ''}`} onClick={() => setActiveTab('picks')}>Top picks</button>
+  <button className={`tab-btn ${activeTab === 'portfolio' ? 'active' : ''}`} onClick={() => setActiveTab('portfolio')}>Portfolio</button>
+  <button className={`tab-btn ${activeTab === 'fundamentals' ? 'active' : ''}`} onClick={() => setActiveTab('fundamentals')}>Fundamentals</button>
+</div>
 
       {activeTab === 'overview' && (
         <>
@@ -539,7 +582,7 @@ function App() {
                 {stockData ? <Line ref={chartRef} data={priceData} options={chartOptions} /> : (
                   <div className="loading">
                     <div style={{textAlign:'center'}}>
-                      <div style={{fontSize:'13px', color:'#555', marginBottom:'8px'}}>Fetching market data and generating AI analysis...</div>
+                      <div style={{fontSize:'13px', color:'#555', marginBottom:'8px'}}>Fetching market data and generating analysis...</div>
                       <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
                         <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
                       </div>
@@ -554,7 +597,7 @@ function App() {
               </div>
             </div>
             <div className="card">
-              <div className="card-title">Why it's moving — AI analysis</div>
+              <div className="card-title">Why it's moving</div>
               <div className="why-panel">
                 {stockData && stockData.analysis ? (
                   stockData.analysis.split('\n').filter(line => line.trim()).map((line, i) => (
@@ -648,7 +691,7 @@ function App() {
 
           {signalLoading && (
             <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
-              <div style={{fontSize:'14px', color:'#555'}}>Generating AI investment signal...</div>
+              <div style={{fontSize:'14px', color:'#555'}}>Generating investment signal...</div>
               <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Analysing momentum, macro environment, and historical patterns</div>
               <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
                 <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
@@ -664,7 +707,7 @@ function App() {
                     {signalData.signal}
                   </div>
                   <div>
-                    <div className="signal-title">{stockData?.company_name || ticker} — AI investment signal</div>
+                    <div className="signal-title">{stockData?.company_name || ticker} — Investment signal</div>
                     <div className="signal-subtitle">
                       {horizon === 'day' ? 'Day trade' : horizon === 'week' ? 'Swing trade' : horizon === 'custom' ? `${customDays}-day custom` : 'Position trade'} · {signalData.risk_level} risk · Generated {new Date().toLocaleDateString()}
                     </div>
@@ -708,7 +751,7 @@ function App() {
                   <div className="signal-section">
                     <div className="signal-section-title">Confidence score</div>
                     <div style={{display:'flex', justifyContent:'space-between', marginBottom:'6px'}}>
-                      <span style={{fontSize:'13px', color:'#888'}}>AI confidence</span>
+                      <span style={{fontSize:'13px', color:'#888'}}>Confidence</span>
                       <span style={{fontSize:'13px', fontWeight:'500', color:'#fff'}}>{signalData.confidence}%</span>
                     </div>
                     <div className="confidence-bar">
@@ -766,7 +809,210 @@ function App() {
         </div>
       )}
 
-      {activeTab === 'fundamentals' && (
+      {activeTab === 'picks' && (
+  <div>
+    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px'}}>
+      <div>
+        <div style={{fontSize:'16px', fontWeight:'600', color:'#fff', letterSpacing:'-0.5px'}}>Top picks from S&P 500</div>
+        <div style={{fontSize:'12px', color:'#555', marginTop:'2px'}}>Screened stocks with strongest momentum — refreshes every 15 minutes</div>
+      </div>
+      {topPicksUpdated && <div style={{fontSize:'11px', color:'#444'}}>Updated {topPicksUpdated}</div>}
+    </div>
+
+    {topPicks.length === 0 ? (
+      <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
+        <div style={{fontSize:'14px', color:'#555'}}>Scanning S&P 500...</div>
+        <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'20px auto 0', overflow:'hidden'}}>
+          <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+        </div>
+      </div>
+    ) : (
+      <div className="picks-grid">
+        {topPicks.map((pick, i) => (
+          <div key={i} className="pick-card" onClick={() => { setTicker(pick.ticker); setInput(pick.ticker); setActiveTab('overview'); }}>
+            <div className="pick-rank">#{i + 1} Top pick</div>
+            <div className="pick-ticker">{pick.ticker}</div>
+            <div className="pick-name">{pick.company_name}</div>
+            <div className="pick-price">${pick.price.toLocaleString()}</div>
+            <div className="pick-stats">
+              <div className="pick-stat">
+                <div className="pick-stat-label">7d</div>
+                <div className={`pick-stat-val ${pick.mom_7d >= 0 ? 'pos' : 'neg'}`}>{pick.mom_7d >= 0 ? '+' : ''}{pick.mom_7d}%</div>
+              </div>
+              <div className="pick-stat">
+                <div className="pick-stat-label">30d</div>
+                <div className={`pick-stat-val ${pick.mom_30d >= 0 ? 'pos' : 'neg'}`}>{pick.mom_30d >= 0 ? '+' : ''}{pick.mom_30d}%</div>
+              </div>
+              <div className="pick-stat">
+                <div className="pick-stat-label">Score</div>
+                <div className="pick-stat-val warn">{pick.score}</div>
+              </div>
+            </div>
+            <div className="pick-sector">{pick.sector}</div>
+          </div>
+        ))}
+      </div>
+    )}
+    <div style={{fontSize:'11px', color:'#333', textAlign:'center', padding:'12px'}}>
+      Top picks are based on momentum scoring, not financial advice. Always do your own research.
+    </div>
+  </div>
+)}
+
+{activeTab === 'portfolio' && (
+  <div>
+    <div className="portfolio-input">
+      <div className="portfolio-input-title">Portfolio analyser</div>
+      <div className="portfolio-input-sub">Enter your holdings to get analysis of your portfolio</div>
+
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:'8px', marginBottom:'8px'}}>
+        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', padding:'0 12px'}}>Ticker</div>
+        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', padding:'0 12px'}}>Shares</div>
+        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', padding:'0 12px'}}>Avg cost ($)</div>
+        <div></div>
+      </div>
+
+      {portfolio.map((holding, i) => (
+        <div key={i} className="holding-row">
+          <input
+            className="holding-input"
+            placeholder="e.g. AAPL"
+            value={holding.ticker}
+            onChange={e => {
+              const updated = [...portfolio];
+              updated[i].ticker = e.target.value.toUpperCase();
+              setPortfolio(updated);
+            }}
+          />
+          <input
+            className="holding-input"
+            placeholder="e.g. 10"
+            type="number"
+            value={holding.shares}
+            onChange={e => {
+              const updated = [...portfolio];
+              updated[i].shares = e.target.value;
+              setPortfolio(updated);
+            }}
+          />
+          <input
+            className="holding-input"
+            placeholder="e.g. 180.00"
+            type="number"
+            value={holding.avg_cost}
+            onChange={e => {
+              const updated = [...portfolio];
+              updated[i].avg_cost = e.target.value;
+              setPortfolio(updated);
+            }}
+          />
+          <button className="remove-holding" onClick={() => {
+            if (portfolio.length === 1) {
+              setPortfolio([{ ticker: '', shares: '', avg_cost: '' }]);
+            } else {
+              setPortfolio(portfolio.filter((_, idx) => idx !== i));
+            }
+          }}>✕</button>
+        </div>
+      ))}
+
+      <div style={{display:'flex', gap:'8px', marginTop:'12px'}}>
+        <button
+          className="auth-btn"
+          onClick={() => setPortfolio([...portfolio, { ticker: '', shares: '', avg_cost: '' }])}
+        >
+          + Add position
+        </button>
+        <button
+          className="auth-btn primary"
+          style={{padding:'8px 20px'}}
+          onClick={handlePortfolioAnalysis}
+          disabled={portfolioLoading}
+        >
+          {portfolioLoading ? 'Analysing...' : 'Analyse portfolio'}
+        </button>
+      </div>
+    </div>
+
+    {portfolioLoading && (
+      <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
+        <div style={{fontSize:'14px', color:'#555'}}>Analysing your portfolio...</div>
+        <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Fetching live prices and generating insights</div>
+        <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+          <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+        </div>
+      </div>
+    )}
+
+    {portfolioResults && !portfolioLoading && (
+      <div className="portfolio-results">
+        <div className="portfolio-summary">
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Total value</div>
+            <div className="portfolio-stat-value">${portfolioResults.total_value.toLocaleString()}</div>
+          </div>
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Positions</div>
+            <div className="portfolio-stat-value">{portfolioResults.positions.length}</div>
+          </div>
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Total P&L</div>
+            <div className={`portfolio-stat-value ${portfolioResults.positions.reduce((sum, p) => sum + p.pnl, 0) >= 0 ? 'pos' : 'neg'}`}>
+              ${Math.round(portfolioResults.positions.reduce((sum, p) => sum + p.pnl, 0)).toLocaleString()}
+            </div>
+          </div>
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Alerts</div>
+            <div className={`portfolio-stat-value ${portfolioResults.momentum_alerts.length > 0 ? 'neg' : 'pos'}`}>
+              {portfolioResults.momentum_alerts.length > 0 ? `${portfolioResults.momentum_alerts.length} ⚠` : '0 ✓'}
+            </div>
+          </div>
+        </div>
+
+        <table className="portfolio-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Company</th>
+              <th>Shares</th>
+              <th>Avg cost</th>
+              <th>Current</th>
+              <th>Value</th>
+              <th>P&L</th>
+              <th>7d momentum</th>
+              <th>Weight</th>
+            </tr>
+          </thead>
+          <tbody>
+            {portfolioResults.positions.map((p, i) => (
+              <tr key={i} onClick={() => { setTicker(p.ticker); setInput(p.ticker); setActiveTab('overview'); }}>
+                <td style={{color:'#fff', fontWeight:'600'}}>{p.ticker}</td>
+                <td style={{color:'#555', fontSize:'12px'}}>{p.company_name}</td>
+                <td>{p.shares}</td>
+                <td>${p.avg_cost}</td>
+                <td>${p.current_price}</td>
+                <td>${p.position_value.toLocaleString()}</td>
+                <td className={p.pnl >= 0 ? 'pos' : 'neg'}>{p.pnl >= 0 ? '+' : ''}${p.pnl} ({p.pnl_pct}%)</td>
+                <td className={p.mom_7d >= 0 ? 'pos' : 'neg'}>{p.mom_7d >= 0 ? '+' : ''}{p.mom_7d}%</td>
+                <td>{p.weight}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="portfolio-analysis">
+          <div className="portfolio-analysis-title">Portfolio analysis</div>
+          <div className="portfolio-analysis-text">
+            {portfolioResults.analysis.split('\n').filter(l => l.trim()).map((line, i) => (
+              <div key={i} style={{marginBottom:'8px'}}>{line.replace(/\*\*/g, '')}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)}
+{activeTab === 'fundamentals' && (
         <div className="bottom-grid" style={{gridTemplateColumns:'repeat(2,1fr)'}}>
           <div className="card">
             <div className="card-title">Company fundamentals</div>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -8,6 +8,7 @@ import os
 import requests
 import json
 import time
+import pandas as pd
 from auth import hash_password, verify_password, create_token, get_current_user
 from pydantic import BaseModel
 
@@ -53,6 +54,157 @@ def get_cached(key):
 
 def set_cached(key, data):
     cache[key] = (data, time.time())
+    SP500_TICKERS = [
+    "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","BRK-B","AVGO","JPM",
+    "LLY","UNH","V","XOM","MA","COST","HD","PG","WMT","NFLX","CRM","BAC",
+    "ORCL","CVX","KO","MRK","ABBV","PEP","TMO","ACN","MCD","CSCO","ABT",
+    "GE","DHR","IBM","TXN","PM","ISRG","QCOM","VZ","NEE","INTU","CAT","NOW",
+    "AMGN","RTX","SPGI","HON","AXP","LOW","MS","GS","BLK","SBUX","DE","ELV",
+    "MDT","GILD","AMAT","ADI","PLD","T","C","REGN","VRTX","ZTS","MMC","CI",
+    "PGR","SYK","TJX","CB","CME","NOC","PANW","LRCX","KLAC","MU","SNPS","CDNS",
+    "APH","MCO","EOG","SLB","OXY","COP","PSA","AMT","CCI","EQIX","DLR","WM",
+    "ECL","ITW","PH","EMR","FDX","NSC","UPS","GWW","ROK","ETN","ADP","PAYX",
+    "FAST","VRSK","ODFL","CSX","CTAS","MSCI","ICE","NDAQ","CBOE","IEX","TT",
+    "PWR","CARR","OTIS","IR","XYL","ROP","IDXX","A","MTD","WAT","FMC","CF",
+    "MOS","NUE","STLD","RS","ATI","HWM","TDG","LHX","BAH","CACI","SAIC","DRS",
+    "HII","GD","LMT","BA","RHI","MAN","PAYC","WDAY","ANSS","EPAM","FTNT","CRWD",
+    "ZS","OKTA","DDOG","NET","SNOW","MDB","COUP","HUBS","TEAM","DOCU","TWLO",
+    "UBER","LYFT","ABNB","DASH","RBLX","COIN","SQ","PYPL","SOFI","AFRM","UPST",
+    "WFC","USB","PNC","TFC","RF","CFG","HBAN","KEY","CMA","ZION","MTB","FITB",
+    "STT","BK","NTRS","SIVB","ALLY","COF","DFS","SYF","AIG","MET","PRU","AFL",
+    "ALL","PFG","UNM","LNC","GL","RGA","AIZ","CINF","HIG","TRV","WRB","RE",
+    "CVS","WBA","MCK","CAH","ABC","ANTM","HUM","MOH","CNC","WELL","VTR","PEAK",
+    "HR","DOC","OHI","NHI","SBAC","SBA","AMH","INVH","MAA","UDR","CPT","EQR",
+    "AVB","ESS","NLY","AGNC","TWO","IVR","PMT","RWT","EARN","DX","WD","RITM"
+]
+
+top_picks_cache = {"data": [], "last_updated": None}
+
+def run_sp500_screen():
+    global top_picks_cache
+    tickers = [
+        "MMM","ABT","ABBV","ACN","ADBE","AMD","AFL","AIG","APD","AKAM",
+        "ALGN","ALLE","LNT","ALL","GOOGL","MO","AMZN","AEE","AAL","AEP",
+        "AXP","AMT","AWK","AMP","AME","AMGN","APH","ADI","ANSS","AON",
+        "AAPL","AMAT","APTV","ADM","ANET","AJG","T","ATO","ADSK","ADP",
+        "AZO","AVB","BKR","BALL","BAC","BAX","BDX","BRK-B","BBY","BIIB",
+        "BLK","BX","BA","BSX","BMY","AVGO","BR","BRO","BG","CDNS","CPT",
+        "CPB","COF","CAH","KMX","CCL","CARR","CAT","CBOE","CBRE","CDW",
+        "CE","COR","CNC","CF","SCHW","CHTR","CVX","CMG","CB","CHD","CI",
+        "CINF","CTAS","CSCO","C","CFG","CLX","CME","CMS","KO","CTSH",
+        "CL","CMCSA","CAG","COP","ED","STZ","COO","CPRT","GLW","COST",
+        "CTRA","CCI","CSX","CMI","CVS","DHI","DHR","DRI","DE","DAL",
+        "DVN","DXCM","FANG","DLR","DFS","DG","DLTR","D","DPZ","DOV",
+        "DOW","DTE","DUK","DD","EMN","ETN","EBAY","ECL","EIX","EW",
+        "EA","ELV","LLY","EMR","ENPH","ETR","EOG","EQT","EFX","EQIX",
+        "EQR","ESS","EL","ETSY","EG","EVRG","ES","EXC","EXPE","EXPD",
+        "EXR","XOM","FDS","FICO","FAST","FRT","FDX","FIS","FITB","FSLR",
+        "FE","FI","FLT","FMC","F","FTNT","FTV","BEN","FCX","GRMN","IT",
+        "GE","GD","GIS","GPC","GILD","GPN","GL","GS","HAL","HIG","HAS",
+        "HCA","HSY","HES","HPE","HLT","HOLX","HD","HON","HRL","HST",
+        "HWM","HPQ","HUBB","HUM","HBAN","HII","IBM","IEX","IDXX","ITW",
+        "INCY","IR","INTC","ICE","IFF","IP","IPG","INTU","ISRG","IVZ",
+        "INVH","IQV","IRM","JBHT","JBL","J","JNJ","JCI","JPM","K",
+        "KDP","KEY","KEYS","KMB","KIM","KMI","KLAC","KHC","KR","LHX",
+        "LH","LRCX","LW","LVS","LDOS","LEN","LIN","LYV","LKQ","LMT",
+        "L","LOW","LULU","LYB","MTB","MRO","MPC","MKTX","MAR","MMC",
+        "MLM","MAS","MA","MKC","MCD","MCK","MDT","MRK","META","MET",
+        "MTD","MGM","MCHP","MU","MSFT","MAA","MRNA","MOH","MDLZ","MPWR",
+        "MNST","MCO","MS","MOS","MSI","MSCI","NDAQ","NTAP","NFLX","NEM",
+        "NEE","NKE","NI","NDSN","NSC","NTRS","NOC","NRG","NUE","NVDA",
+        "NVR","NXPI","ORLY","OXY","ODFL","OMC","ON","OKE","ORCL","OTIS",
+        "PCAR","PKG","PANW","PARA","PH","PAYX","PAYC","PYPL","PNR","PEP",
+        "PFE","PCG","PM","PSX","PNW","PNC","POOL","PPG","PPL","PFG",
+        "PG","PGR","PLD","PRU","PEG","PTC","PSA","PHM","PWR","QCOM",
+        "DGX","RL","RJF","RTX","O","REG","REGN","RF","RSG","RMD",
+        "ROK","ROL","ROP","ROST","RCL","SPGI","CRM","SBAC","SLB","STX",
+        "SRE","NOW","SHW","SPG","SWKS","SJM","SNA","SO","LUV","SWK",
+        "SBUX","STT","STLD","STE","SYK","SYF","SNPS","SYY","TMUS","TROW",
+        "TTWO","TPR","TRGP","TGT","TEL","TDY","TFX","TER","TSLA","TXN",
+        "TXT","TMO","TJX","TSCO","TT","TDG","TRV","TRMB","TFC","TYL",
+        "TSN","USB","UBER","UDR","ULTA","UNP","UAL","UPS","URI","UNH",
+        "UHS","VLO","VTR","VRSN","VRSK","VZ","VRTX","VTRS","VICI","V",
+        "VST","VMC","WRB","GWW","WAB","WBA","WMT","WM","WAT","WEC",
+        "WFC","WELL","WST","WDC","WY","WMB","WTW","WYNN","XEL","XYL",
+        "YUM","ZBRA","ZBH","ZTS"
+    ]
+    try:
+        print("Running S&P 500 screen...")
+        all_scores = []
+        batch_size = 50
+        
+        for i in range(0, len(tickers), batch_size):
+            batch = tickers[i:i+batch_size]
+            try:
+                import time as time_module
+                data = yf.download(batch, period="35d", interval="1d", group_by="ticker", auto_adjust=True, progress=False)
+                time_module.sleep(2)
+                
+                for t in batch:
+                    try:
+                        if len(batch) == 1:
+                            closes = data["Close"].dropna()
+                        elif t in data.columns.get_level_values(0):
+                            closes = data[t]["Close"].dropna()
+                        else:
+                            continue
+                        
+                        if len(closes) < 10:
+                            continue
+                        
+                        prices = closes.values
+                        mom_7d = (prices[-1] - prices[-7]) / prices[-7] * 100 if len(prices) >= 7 else 0
+                        mom_30d = (prices[-1] - prices[-30]) / prices[-30] * 100 if len(prices) >= 30 else 0
+                        volatility = (max(prices[-20:]) - min(prices[-20:])) / min(prices[-20:]) * 100 if len(prices) >= 20 else 0
+                        score = (mom_7d * 0.4) + (mom_30d * 0.3) - (volatility * 0.1)
+                        all_scores.append({"ticker": t, "score": score, "mom_7d": round(float(mom_7d), 2), "mom_30d": round(float(mom_30d), 2), "price": round(float(prices[-1]), 2)})
+                    except:
+                        continue
+            except Exception as e:
+                print(f"Batch error: {e}")
+                continue
+        
+        all_scores.sort(key=lambda x: x["score"], reverse=True)
+        top15 = all_scores[:15]
+        
+        results = []
+        for s in top15[:10]:
+            try:
+                stock = yf.Ticker(s["ticker"])
+                info = stock.info
+                company_name = info.get("shortName", s["ticker"])
+                sector = info.get("sector", "N/A")
+                results.append({
+                    "ticker": s["ticker"],
+                    "company_name": company_name,
+                    "sector": sector,
+                    "price": s["price"],
+                    "mom_7d": s["mom_7d"],
+                    "mom_30d": s["mom_30d"],
+                    "score": round(s["score"], 2),
+                })
+            except:
+                continue
+        
+        top_picks_cache["data"] = results
+        top_picks_cache["last_updated"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        print(f"Screen complete — {len(results)} top picks found")
+    except Exception as e:
+        print(f"Screen error: {e}")
+
+import threading
+
+def _background_screen():
+    import time
+    time.sleep(5)
+    while True:
+        try:
+            run_sp500_screen()
+        except Exception as e:
+            print(f"Background screen error: {e}")
+        time.sleep(900)
+
+threading.Thread(target=_background_screen, daemon=True).start()
 
 @app.get("/search/{query}")
 def search_tickers(query: str):
@@ -276,6 +428,120 @@ def remove_from_watchlist(ticker: str, current_user_id: str = Depends(get_curren
         db.delete(item)
         db.commit()
     return {"message": "Removed from watchlist"}
+
+@app.get("/top-picks")
+def get_top_picks():
+    return {
+        "picks": top_picks_cache["data"],
+        "last_updated": top_picks_cache["last_updated"]
+    }
+
+@app.post("/portfolio/analyze")
+def analyze_portfolio(holdings: list = None):
+    from fastapi import Body
+    return {"message": "Use POST body"}
+
+@app.post("/portfolio")
+def analyze_portfolio_post(body: dict = Body(...)):
+    holdings = body.get("holdings", [])
+    if not holdings:
+        raise HTTPException(status_code=400, detail="No holdings provided")
+    
+    portfolio_data = []
+    total_value = 0
+    
+    for h in holdings:
+        try:
+            ticker_sym = h.get("ticker", "").upper()
+            shares = float(h.get("shares", 0))
+            avg_cost = float(h.get("avg_cost", 0))
+            
+            stock = yf.Ticker(ticker_sym)
+            hist = stock.history(period="1mo")
+            info = stock.info
+            
+            current_price = round(hist["Close"].iloc[-1], 2)
+            company_name = info.get("shortName", ticker_sym)
+            sector = info.get("sector", "N/A")
+            
+            position_value = current_price * shares
+            cost_basis = avg_cost * shares
+            pnl = position_value - cost_basis
+            pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
+            
+            prices = hist["Close"].tolist()
+            mom_7d = (prices[-1] - prices[-7]) / prices[-7] * 100 if len(prices) >= 7 else 0
+            
+            total_value += position_value
+            
+            portfolio_data.append({
+                "ticker": ticker_sym,
+                "company_name": company_name,
+                "sector": sector,
+                "shares": shares,
+                "avg_cost": avg_cost,
+                "current_price": current_price,
+                "position_value": round(position_value, 2),
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "mom_7d": round(mom_7d, 2),
+            })
+        except Exception as e:
+            print(f"Error processing {h}: {e}")
+            continue
+    
+    for p in portfolio_data:
+        p["weight"] = round(p["position_value"] / total_value * 100, 2) if total_value > 0 else 0
+    
+    sectors = {}
+    for p in portfolio_data:
+        s = p["sector"]
+        sectors[s] = sectors.get(s, 0) + p["weight"]
+    
+    winners = sorted([p for p in portfolio_data if p["pnl_pct"] > 0], key=lambda x: x["pnl_pct"], reverse=True)[:3]
+    losers = sorted([p for p in portfolio_data if p["pnl_pct"] < 0], key=lambda x: x["pnl_pct"])[:3]
+    momentum_alerts = [p for p in portfolio_data if p["mom_7d"] < -3]
+    
+    holdings_summary = "\n".join([
+        f"- {p['ticker']} ({p['company_name']}): {p['shares']} shares @ ${p['avg_cost']} avg cost, "
+        f"now ${p['current_price']}, P&L: ${p['pnl']} ({p['pnl_pct']}%), "
+        f"7d momentum: {p['mom_7d']}%, portfolio weight: {p['weight']}%"
+        for p in portfolio_data
+    ])
+    
+    sector_summary = ", ".join([f"{k}: {round(v, 1)}%" for k, v in sectors.items()])
+    
+    prompt = (
+        "You are a senior portfolio manager. Analyze this investment portfolio and provide actionable insights.\n\n"
+        f"Total portfolio value: ${round(total_value, 2)}\n"
+        f"Number of positions: {len(portfolio_data)}\n"
+        f"Sector allocation: {sector_summary}\n\n"
+        f"Holdings:\n{holdings_summary}\n\n"
+        "Provide a concise analysis covering:\n"
+        "1. Overall portfolio health (2-3 sentences)\n"
+        "2. Top concerns or risks (2-3 bullet points)\n"
+        "3. Opportunities — positions to add to or consider selling (2-3 bullet points)\n"
+        "4. Diversification assessment (1-2 sentences)\n\n"
+        "Be specific, data-driven, and actionable. Write for a retail investor."
+    )
+    
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=600,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    analysis = message.content[0].text
+    
+    return {
+        "total_value": round(total_value, 2),
+        "positions": portfolio_data,
+        "sectors": sectors,
+        "winners": winners,
+        "losers": losers,
+        "momentum_alerts": momentum_alerts,
+        "analysis": analysis
+    }
 
 @app.get("/predictions")
 def get_predictions():

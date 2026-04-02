@@ -818,3 +818,255 @@ body {
   font-weight: 700;
   color: #fff;
 }
+
+.picks-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.pick-card {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pick-card:hover {
+  border-color: #333;
+  background: #111;
+}
+
+.pick-rank {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.pick-ticker {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
+  margin-bottom: 2px;
+}
+
+.pick-name {
+  font-size: 11px;
+  color: #555;
+  margin-bottom: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pick-price {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.pick-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.pick-stat {
+  flex: 1;
+  background: #111;
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.pick-stat-label {
+  font-size: 9px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.pick-stat-val {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pick-sector {
+  font-size: 10px;
+  color: #444;
+  margin-top: 8px;
+}
+
+.portfolio-input {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.portfolio-input-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.portfolio-input-sub {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 20px;
+}
+
+.holding-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.holding-input {
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.holding-input:focus {
+  border-color: #3b82f6;
+}
+
+.holding-input::placeholder {
+  color: #333;
+}
+
+.remove-holding {
+  background: transparent;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+  color: #555;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+
+.remove-holding:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.portfolio-results {
+  background: #0e0e0e;
+  border: 1px solid #1a1a1a;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.portfolio-stat {
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.portfolio-stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.portfolio-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.portfolio-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+}
+
+.portfolio-table th {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.portfolio-table td {
+  font-size: 13px;
+  color: #888;
+  padding: 12px;
+  border-bottom: 1px solid #0a0a0a;
+}
+
+.portfolio-table tr:hover td {
+  background: #111;
+  cursor: pointer;
+}
+
+.portfolio-table td:first-child {
+  font-weight: 600;
+  color: #fff;
+}
+
+.portfolio-analysis {
+  background: #111;
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.portfolio-analysis-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #444;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.portfolio-analysis-text {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #888;
+}
