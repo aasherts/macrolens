@@ -603,7 +603,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
                   stockData.analysis.split('\n').filter(line => line.trim()).map((line, i) => (
                     <div key={i} className="why-item">
                       <span className="bullet">•</span>
-                      <span>{line.replace(/^[•\-*]\s*/, '').replace(/**/g, '')}</span>
+                      <span>{line.replace(/^[•\-*]\s*/, '').replace(/\*\*/g, '')}</span>
                     </div>
                   ))
                 ) : <p style={{color:'#555', fontSize:'13px'}}>Loading analysis...</p>}
