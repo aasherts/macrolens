@@ -92,7 +92,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
         .then(res => res.json())
         .then(data => setNewsData(data.articles || []));
     }
-  }, [stockData]);
+  }, [stockData, ticker]);
 
   useEffect(() => {
     const fetchMarket = () => {
@@ -114,7 +114,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
         .then(res => res.json())
         .then(data => { setSignalData(data); setSignalLoading(false); });
     }
-  }, [activeTab, ticker, horizon]);
+  }, [activeTab, ticker, horizon, customDays]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -603,7 +603,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
                   stockData.analysis.split('\n').filter(line => line.trim()).map((line, i) => (
                     <div key={i} className="why-item">
                       <span className="bullet">•</span>
-                      <span>{line.replace(/^[•\-\*]\s*/, '').replace(/\*\*/g, '')}</span>
+                      <span>{line.replace(/^[•\-*]\s*/, '').replace(/**/g, '')}</span>
                     </div>
                   ))
                 ) : <p style={{color:'#555', fontSize:'13px'}}>Loading analysis...</p>}
