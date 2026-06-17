@@ -33,6 +33,8 @@ const crosshairPlugin = {
 
 ChartJS.register(crosshairPlugin);
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://macrolens-backend.onrender.com';
+
 function App() {
   const [ticker, setTicker] = useState('AAPL');
   const [input, setInput] = useState('AAPL');
@@ -85,20 +87,20 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
     setSignalData(null);
     setHoverPrice(null);
     setHoverTime(null);
-    fetch(`http://127.0.0.1:8000/stock/${ticker}?range=${range}`)
+    fetch(`${API_URL}/stock/${ticker}?range=${range}`)
       .then(res => res.json())
       .then(data => setStockData(data));
   }, [ticker, range]);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/macro')
+    fetch(`${API_URL}/macro`)
       .then(res => res.json())
       .then(data => setMacroData(data));
   }, []);
 
   useEffect(() => {
     if (stockData) {
-      fetch(`http://127.0.0.1:8000/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
+      fetch(`${API_URL}/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
         .then(res => res.json())
         .then(data => setNewsData(data.articles || []));
     }
@@ -106,7 +108,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
 
   useEffect(() => {
     const fetchMarket = () => {
-      fetch('http://127.0.0.1:8000/market-overview')
+      fetch(`${API_URL}/market-overview`)
         .then(res => res.json())
         .then(data => setMarketData(data.items || []));
     };
@@ -120,7 +122,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
       setSignalLoading(true);
       setSignalData(null);
       const days = horizon === 'day' ? 1 : horizon === 'week' ? 7 : customDays;
-      fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${horizon}&days=${days}`)
+      fetch(`${API_URL}/signal/${ticker}?horizon=${horizon}&days=${days}`)
         .then(res => res.json())
         .then(data => { setSignalData(data); setSignalLoading(false); });
     }
@@ -132,7 +134,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
         const token = await firebaseUser.getIdToken();
         localStorage.setItem('macrolens_token', token);
         setUser({ username: firebaseUser.displayName || firebaseUser.email.split('@')[0], email: firebaseUser.email });
-        fetch('http://127.0.0.1:8000/me', {
+        fetch(`${API_URL}/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
           .then(res => res.json())
@@ -150,14 +152,14 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   }, []);
 
   useEffect(() => {
-  fetch('http://127.0.0.1:8000/donate-clicks')
+  fetch(`${API_URL}/donate-clicks`)
     .then(res => res.json())
     .then(data => setDonateClicks(data.clicks || 0));
 }, []);
 
   useEffect(() => {
   if (activeTab === 'picks') {
-    fetch('http://127.0.0.1:8000/top-picks')
+    fetch(`${API_URL}/top-picks`)
       .then(res => res.json())
       .then(data => {
         setTopPicks(data.picks || []);
@@ -170,7 +172,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
     const val = e.target.value;
     setInput(val);
     if (val.length > 1) {
-      fetch(`http://127.0.0.1:8000/search/${val}`)
+      fetch(`${API_URL}/search/${val}`)
         .then(res => res.json())
         .then(data => { setSearchResults(data.results); setShowDropdown(true); });
     } else {
@@ -188,7 +190,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   const fetchSignal = (h, d) => {
     setSignalLoading(true);
     setSignalData(null);
-    fetch(`http://127.0.0.1:8000/signal/${ticker}?horizon=${h}&days=${d}`)
+    fetch(`${API_URL}/signal/${ticker}?horizon=${h}&days=${d}`)
       .then(res => res.json())
       .then(data => { setSignalData(data); setSignalLoading(false); });
   };
@@ -209,7 +211,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   const handleAuth = async () => {
     setAuthLoading(true);
     setAuthError('');
-    const url = authMode === 'login' ? 'http://127.0.0.1:8000/login' : 'http://127.0.0.1:8000/register';
+    const url = authMode === 'login' ? `${API_URL}/login` : `${API_URL}/register`;
     const body = authMode === 'login'
       ? { email: authEmail, password: authPassword }
       : { email: authEmail, username: authUsername, password: authPassword };
@@ -246,7 +248,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   const handleAddToWatchlist = async (tickerSymbol, companyName) => {
     const token = localStorage.getItem('macrolens_token');
     if (!token) { setShowAuth(true); return; }
-    await fetch('http://127.0.0.1:8000/watchlist/add', {
+    await fetch(`${API_URL}/watchlist/add`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ ticker: tickerSymbol, company_name: companyName })
@@ -257,7 +259,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   const handleRemoveFromWatchlist = async (tickerSymbol) => {
     const token = localStorage.getItem('macrolens_token');
     if (!token) return;
-    await fetch(`http://127.0.0.1:8000/watchlist/remove/${tickerSymbol}`, {
+    await fetch(`${API_URL}/watchlist/remove/${tickerSymbol}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -272,7 +274,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
       {
         label: 'Price',
         data: [...stockData.prices, null, null, null],
-        borderColor: '#7eb8f7',
+        borderColor: '#60a5fa',
         borderWidth: 2,
         pointRadius: 0,
         tension: 0.3,
@@ -281,7 +283,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
       {
         label: 'Predicted',
         data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.mid],
-        borderColor: '#7b1c3e',
+        borderColor: '#ef4444',
         borderWidth: 2,
         borderDash: [5, 3],
         pointRadius: 0,
@@ -292,7 +294,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
         label: 'High band',
         data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.high],
         borderColor: 'transparent',
-        backgroundColor: 'rgba(123,28,62,0.15)',
+        backgroundColor: 'rgba(239,68,68,0.15)',
         pointRadius: 0,
         tension: 0.3,
         fill: '+1',
@@ -353,7 +355,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
   setPortfolioLoading(true);
   setPortfolioResults(null);
   try {
-    const res = await fetch('http://127.0.0.1:8000/portfolio', {
+    const res = await fetch(`${API_URL}/portfolio`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ holdings: validHoldings.map(h => ({
@@ -374,7 +376,7 @@ const handleFindTrade = async () => {
   setFinderResult(null);
   const days = finderTimeframe === 'day' ? 1 : finderTimeframe === 'week' ? 7 : finderTimeframe === 'month' ? 30 : finderTimeframe === 'year' ? 365 : finderCustomDays;
   try {
-    const res = await fetch('http://127.0.0.1:8000/trade-finder', {
+    const res = await fetch(`${API_URL}/trade-finder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -542,31 +544,58 @@ const handleFindTrade = async () => {
       <div className="metrics">
         <div className="metric-card">
           <div className="metric-label">Current price</div>
-          <div className="metric-value">
-            ${hoverPrice ? hoverPrice.toFixed(2) : (stockData ? stockData.current : '--')}
-          </div>
-          <div className="metric-change" style={{color: hoverPrice ? '#7eb8f7' : undefined}}>
-            {hoverPrice ? hoverTime : (stockData ? `${stockData.change >= 0 ? '+' : ''}${stockData.change} (${stockData.change_pct}%) today` : '--')}
-          </div>
+          {!stockData ? (
+            <div className="skeleton-text-block">
+              <div className="skeleton skeleton-metric-value"></div>
+              <div className="skeleton skeleton-metric-change"></div>
+            </div>
+          ) : (
+            <>
+              <div className="metric-value">
+                ${hoverPrice ? hoverPrice.toFixed(2) : stockData.current}
+              </div>
+              <div className="metric-change" style={{color: hoverPrice ? '#60a5fa' : undefined}}>
+                {hoverPrice ? hoverTime : `${stockData.change >= 0 ? '+' : ''}${stockData.change} (${stockData.change_pct}%) today`}
+              </div>
+            </>
+          )}
         </div>
         <div className="metric-card">
           <div className="metric-label">7-day forecast</div>
-          <div className={`metric-value ${stockData && stockData.prediction.pct >= 0 ? 'up' : 'down'}`}>
-            {stockData ? `${stockData.prediction.pct >= 0 ? '+' : ''}${stockData.prediction.pct}%` : '--'}
-          </div>
-          <div className="metric-change">{stockData ? `Target: $${stockData.prediction.mid[2]}` : '--'}</div>
+          {!stockData ? (
+            <div className="skeleton-text-block">
+              <div className="skeleton skeleton-metric-value"></div>
+              <div className="skeleton skeleton-metric-change"></div>
+            </div>
+          ) : (
+            <>
+              <div className={`metric-value ${stockData.prediction.pct >= 0 ? 'up' : 'down'}`}>
+                {`${stockData.prediction.pct >= 0 ? '+' : ''}${stockData.prediction.pct}%`}
+              </div>
+              <div className="metric-change">{`Target: $${stockData.prediction.mid[2]}`}</div>
+            </>
+          )}
         </div>
         <div className="metric-card">
           <div className="metric-label">Market cap</div>
-          <div className="metric-value">{stockData?.sentiment?.market_cap || '--'}</div>
-          <div className="metric-change">{stockData?.sentiment?.recommendation || '--'}</div>
+          {!stockData ? (
+            <div className="skeleton-text-block">
+              <div className="skeleton skeleton-metric-value"></div>
+              <div className="skeleton skeleton-metric-change"></div>
+            </div>
+          ) : (
+            <>
+              <div className="metric-value">{stockData?.sentiment?.market_cap || '--'}</div>
+              <div className="metric-change">{stockData?.sentiment?.recommendation || '--'}</div>
+            </>
+          )}
         </div>
         <div className="metric-card">
           <div className="metric-label">Signal</div>
           <div className={`metric-value ${signalData?.signal === 'BUY' ? 'up' : signalData?.signal === 'SELL' ? 'down' : ''}`}>
             {signalData ? signalData.signal : (activeTab === 'signal' ? 'Loading...' : 'View signal')}
           </div>
-          <div className="metric-change" style={{cursor:'pointer', color:'#7eb8f7'}} onClick={() => setActiveTab('signal')}>
+          <div className="metric-change" style={{cursor:'pointer', color:'#60a5fa'}} onClick={() => setActiveTab('signal')}>
             {signalData ? `${signalData.confidence}% confidence` : 'Click signal tab →'}
           </div>
         </div>
@@ -602,7 +631,7 @@ const handleFindTrade = async () => {
         borderRadius:'6px',
         border: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '1px solid #3b82f6' : '1px solid #1a1a1a',
         background: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#111' : 'transparent',
-        color: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#7eb8f7' : '#555',
+        color: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#60a5fa' : '#555',
         fontSize:'11px',
         fontWeight:'600',
         cursor:'pointer',
@@ -622,20 +651,13 @@ const handleFindTrade = async () => {
               </div>
               <div className="chart-wrapper">
                 {stockData ? <Line ref={chartRef} data={priceData} options={chartOptions} /> : (
-                  <div className="loading">
-                    <div style={{textAlign:'center'}}>
-                      <div style={{fontSize:'13px', color:'#555', marginBottom:'8px'}}>Fetching market data and generating analysis...</div>
-                      <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
-                        <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
-                      </div>
-                    </div>
-                  </div>
+                  <div className="skeleton skeleton-chart"></div>
                 )}
               </div>
               <div style={{display:'flex', gap:'16px', marginTop:'10px', fontSize:'11px', color:'#555'}}>
-                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#7eb8f7', display:'inline-block'}}></span>Actual</span>
-                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#7b1c3e', display:'inline-block'}}></span>Predicted</span>
-                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'10px', height:'10px', background:'rgba(123,28,62,0.15)', display:'inline-block', borderRadius:'2px'}}></span>Confidence band</span>
+                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#60a5fa', display:'inline-block'}}></span>Actual</span>
+                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#ef4444', display:'inline-block'}}></span>Predicted</span>
+                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'10px', height:'10px', background:'rgba(239,68,68,0.15)', display:'inline-block', borderRadius:'2px'}}></span>Confidence band</span>
               </div>
             </div>
             <div className="card">
@@ -648,7 +670,14 @@ const handleFindTrade = async () => {
                       <span>{line.replace(/^[•\-*]\s*/, '').replace(/\*\*/g, '')}</span>
                     </div>
                   ))
-                ) : <p style={{color:'#555', fontSize:'13px'}}>Loading analysis...</p>}
+                ) : (
+                  <div className="skeleton-text-block">
+                    <div className="skeleton skeleton-line" style={{width:'100%'}}></div>
+                    <div className="skeleton skeleton-line" style={{width:'90%'}}></div>
+                    <div className="skeleton skeleton-line" style={{width:'75%'}}></div>
+                    <div className="skeleton skeleton-line" style={{width:'85%'}}></div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -673,7 +702,14 @@ const handleFindTrade = async () => {
                     <div style={{fontSize:'11px', color:'#555555'}}>{article.source} · {article.publishedAt}</div>
                   </a>
                 </div>
-              )) : <p style={{color:'#555', fontSize:'13px'}}>Loading news...</p>}
+              )) : (
+                <div className="skeleton-text-block">
+                  <div className="skeleton skeleton-line" style={{width:'100%'}}></div>
+                  <div className="skeleton skeleton-line" style={{width:'60%'}}></div>
+                  <div className="skeleton skeleton-line" style={{width:'95%'}}></div>
+                  <div className="skeleton skeleton-line" style={{width:'55%'}}></div>
+                </div>
+              )}
             </div>
 
             <div className="card">
@@ -1251,7 +1287,7 @@ const handleFindTrade = async () => {
   rel="noreferrer"
   className="support-btn"
   onClick={() => {
-    fetch('http://127.0.0.1:8000/donate-click', { method: 'POST' });
+    fetch(`${API_URL}/donate-click`, { method: 'POST' });
   }}
 >
   ♥ Donate to Junior Achievement

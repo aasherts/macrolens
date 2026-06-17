@@ -132,14 +132,14 @@ def run_sp500_screen():
         print("Running S&P 500 screen...")
         all_scores = []
         batch_size = 50
-        
+
         for i in range(0, len(tickers), batch_size):
             batch = tickers[i:i+batch_size]
             try:
                 import time as time_module
                 data = yf.download(batch, period="35d", interval="1d", group_by="ticker", auto_adjust=True, progress=False)
-                time_module.sleep(5)
-                
+                time_module.sleep(10)
+
                 for t in batch:
                     try:
                         if len(batch) == 1:
@@ -148,10 +148,10 @@ def run_sp500_screen():
                             closes = data[t]["Close"].dropna()
                         else:
                             continue
-                        
+
                         if len(closes) < 10:
                             continue
-                        
+
                         prices = closes.values
                         mom_7d = (prices[-1] - prices[-7]) / prices[-7] * 100 if len(prices) >= 7 else 0
                         mom_30d = (prices[-1] - prices[-30]) / prices[-30] * 100 if len(prices) >= 30 else 0
@@ -160,13 +160,16 @@ def run_sp500_screen():
                         all_scores.append({"ticker": t, "score": score, "mom_7d": round(float(mom_7d), 2), "mom_30d": round(float(mom_30d), 2), "price": round(float(prices[-1]), 2)})
                     except:
                         continue
+            except OSError as e:
+                print(f"OSError during batch (likely fd limit) — skipping batch: {e}")
+                continue
             except Exception as e:
                 print(f"Batch error: {e}")
                 continue
-        
+
         all_scores.sort(key=lambda x: x["score"], reverse=True)
         top15 = all_scores[:15]
-        
+
         results = []
         for s in top15[:10]:
             try:
@@ -185,10 +188,12 @@ def run_sp500_screen():
                 })
             except:
                 continue
-        
+
         top_picks_cache["data"] = results
         top_picks_cache["last_updated"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         print(f"Screen complete — {len(results)} top picks found")
+    except OSError as e:
+        print(f"OSError in scanner (likely fd limit) — continuing: {e}")
     except Exception as e:
         print(f"Screen error: {e}")
 
