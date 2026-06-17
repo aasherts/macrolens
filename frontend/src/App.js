@@ -274,7 +274,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
       {
         label: 'Price',
         data: [...stockData.prices, null, null, null],
-        borderColor: '#60a5fa',
+        borderColor: '#b08a3e',
         borderWidth: 2,
         pointRadius: 0,
         tension: 0.3,
@@ -283,7 +283,7 @@ const [portfolioLoading, setPortfolioLoading] = useState(false);
       {
         label: 'Predicted',
         data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.mid],
-        borderColor: '#ef4444',
+        borderColor: '#c94545',
         borderWidth: 2,
         borderDash: [5, 3],
         pointRadius: 0,
@@ -414,7 +414,10 @@ const handleFindTrade = async () => {
       )}
 
       <div className="topbar">
-        <div className="brand">macro<span>lens</span></div>
+        <div className="brand">
+          <img src="/shortley-shield.png" alt="Shortley shield" className="brand-shield" />
+          Macro<span>Lens</span>
+        </div>
         <div style={{flex:1, position:'relative'}}>
           <input
             placeholder="Search ticker or company name..."
@@ -454,21 +457,21 @@ const handleFindTrade = async () => {
   {showWatchlistPanel && (
     <div style={{
       position:'absolute', top:'36px', right:'0', width:'220px',
-      background:'#0e0e0e', border:'1px solid #1a1a1a', borderRadius:'12px',
+      background:'#141210', border:'1px solid #2a2520', borderRadius:'12px',
       padding:'12px', zIndex:1000, boxShadow:'0 8px 32px rgba(0,0,0,0.5)'
     }} onClick={e => e.stopPropagation()}>
-      <div style={{fontSize:'11px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', marginBottom:'10px'}}>Saved watchlist</div>
+      <div style={{fontSize:'11px', fontWeight:'700', letterSpacing:'0.8px', color:'#4a4038', textTransform:'uppercase', marginBottom:'10px'}}>Saved watchlist</div>
       {userWatchlist.length === 0 ? (
-        <div style={{fontSize:'12px', color:'#555'}}>No saved tickers yet</div>
+        <div style={{fontSize:'12px', color:'#8a7e72'}}>No saved tickers yet</div>
       ) : (
         userWatchlist.map((w, i) => (
-          <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom: i < userWatchlist.length - 1 ? '1px solid #1a1a1a' : 'none'}}>
+          <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom: i < userWatchlist.length - 1 ? '1px solid #2a2520' : 'none'}}>
             <span style={{fontSize:'13px', color:'#fff', cursor:'pointer', fontWeight:'500'}}
               onClick={() => { setTicker(w.ticker); setInput(w.ticker); setShowWatchlistPanel(false); }}>
               {w.ticker}
             </span>
-            <span style={{fontSize:'11px', color:'#555', flex:1, marginLeft:'8px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{w.company_name}</span>
-            <span style={{fontSize:'11px', color:'#f87171', cursor:'pointer', marginLeft:'8px'}}
+            <span style={{fontSize:'11px', color:'#8a7e72', flex:1, marginLeft:'8px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{w.company_name}</span>
+            <span style={{fontSize:'11px', color:'#c94545', cursor:'pointer', marginLeft:'8px'}}
               onClick={() => handleRemoveFromWatchlist(w.ticker)}>✕</span>
           </div>
         ))
@@ -510,9 +513,9 @@ const handleFindTrade = async () => {
             </button>
 
             <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
-              <div style={{flex:1, height:'1px', background:'#1a1a1a'}}></div>
-              <span style={{fontSize:'11px', color:'#444'}}>or</span>
-              <div style={{flex:1, height:'1px', background:'#1a1a1a'}}></div>
+              <div style={{flex:1, height:'1px', background:'#2a2520'}}></div>
+              <span style={{fontSize:'11px', color:'#4a4038'}}>or</span>
+              <div style={{flex:1, height:'1px', background:'#2a2520'}}></div>
             </div>
 
             {authMode === 'register' && (
@@ -554,7 +557,7 @@ const handleFindTrade = async () => {
               <div className="metric-value">
                 ${hoverPrice ? hoverPrice.toFixed(2) : stockData.current}
               </div>
-              <div className="metric-change" style={{color: hoverPrice ? '#60a5fa' : undefined}}>
+              <div className="metric-change" style={{color: hoverPrice ? '#b08a3e' : undefined}}>
                 {hoverPrice ? hoverTime : `${stockData.change >= 0 ? '+' : ''}${stockData.change} (${stockData.change_pct}%) today`}
               </div>
             </>
@@ -595,7 +598,7 @@ const handleFindTrade = async () => {
           <div className={`metric-value ${signalData?.signal === 'BUY' ? 'up' : signalData?.signal === 'SELL' ? 'down' : ''}`}>
             {signalData ? signalData.signal : (activeTab === 'signal' ? 'Loading...' : 'View signal')}
           </div>
-          <div className="metric-change" style={{cursor:'pointer', color:'#60a5fa'}} onClick={() => setActiveTab('signal')}>
+          <div className="metric-change" style={{cursor:'pointer', color:'#b08a3e'}} onClick={() => setActiveTab('signal')}>
             {signalData ? `${signalData.confidence}% confidence` : 'Click signal tab →'}
           </div>
         </div>
@@ -629,9 +632,9 @@ const handleFindTrade = async () => {
       style={{
         padding:'6px 12px',
         borderRadius:'6px',
-        border: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '1px solid #3b82f6' : '1px solid #1a1a1a',
-        background: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#111' : 'transparent',
-        color: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#60a5fa' : '#555',
+        border: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '1px solid #b08a3e' : '1px solid #2a2520',
+        background: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#1a1710' : 'transparent',
+        color: userWatchlist.some(w => w.ticker === ticker.toUpperCase()) ? '#b08a3e' : '#8a7e72',
         fontSize:'11px',
         fontWeight:'600',
         cursor:'pointer',
@@ -654,9 +657,9 @@ const handleFindTrade = async () => {
                   <div className="skeleton skeleton-chart"></div>
                 )}
               </div>
-              <div style={{display:'flex', gap:'16px', marginTop:'10px', fontSize:'11px', color:'#555'}}>
-                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#60a5fa', display:'inline-block'}}></span>Actual</span>
-                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#ef4444', display:'inline-block'}}></span>Predicted</span>
+              <div style={{display:'flex', gap:'16px', marginTop:'10px', fontSize:'11px', color:'#8a7e72'}}>
+                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#b08a3e', display:'inline-block'}}></span>Actual</span>
+                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'20px', height:'2px', background:'#c94545', display:'inline-block'}}></span>Predicted</span>
                 <span style={{display:'flex', alignItems:'center', gap:'4px'}}><span style={{width:'10px', height:'10px', background:'rgba(239,68,68,0.15)', display:'inline-block', borderRadius:'2px'}}></span>Confidence band</span>
               </div>
             </div>
@@ -696,7 +699,7 @@ const handleFindTrade = async () => {
             <div className="card">
               <div className="card-title">Latest news</div>
               {newsData.length > 0 ? newsData.map((article, i) => (
-                <div key={i} style={{padding:'8px 0', borderBottom: i < newsData.length - 1 ? '1px solid #1a1a1a' : 'none'}}>
+                <div key={i} style={{padding:'8px 0', borderBottom: i < newsData.length - 1 ? '1px solid #2a2520' : 'none'}}>
                   <a href={article.url} target="_blank" rel="noreferrer" style={{textDecoration:'none'}}>
                     <div style={{fontSize:'13px', color:'#ffffff', marginBottom:'4px', lineHeight:'1.4', fontWeight:'500'}}>{article.title}</div>
                     <div style={{fontSize:'11px', color:'#555555'}}>{article.source} · {article.publishedAt}</div>
@@ -747,7 +750,7 @@ const handleFindTrade = async () => {
           </div>
 
           {showCustom && (
-            <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px', background:'#111', border:'1px solid #1a1a1a', borderRadius:'10px', padding:'14px 16px'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px', background:'#1a1710', border:'1px solid #2a2520', borderRadius:'10px', padding:'14px 16px'}}>
               <span style={{fontSize:'13px', color:'#888'}}>Hold for</span>
               <input
                 type="number"
@@ -755,12 +758,12 @@ const handleFindTrade = async () => {
                 max="365"
                 value={customDays}
                 onChange={e => setCustomDays(parseInt(e.target.value))}
-                style={{width:'80px', background:'#0a0a0a', border:'1px solid #333', borderRadius:'6px', padding:'6px 10px', color:'#fff', fontSize:'14px', fontWeight:'500', outline:'none'}}
+                style={{width:'80px', background:'#1a1710', border:'1px solid #2a2520', borderRadius:'6px', padding:'6px 10px', color:'#fff', fontSize:'14px', fontWeight:'500', outline:'none'}}
               />
               <span style={{fontSize:'13px', color:'#888'}}>days</span>
               <button
                 onClick={handleCustomSubmit}
-                style={{padding:'7px 16px', background:'#3b82f6', border:'none', borderRadius:'6px', color:'#fff', fontSize:'13px', fontWeight:'600', cursor:'pointer', fontFamily:'Inter, sans-serif'}}
+                style={{padding:'7px 16px', background:'#a4391c', border:'none', borderRadius:'6px', color:'#fff', fontSize:'13px', fontWeight:'600', cursor:'pointer', fontFamily:'Inter, sans-serif'}}
               >
                 Generate signal
               </button>
@@ -769,10 +772,10 @@ const handleFindTrade = async () => {
 
           {signalLoading && (
             <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
-              <div style={{fontSize:'14px', color:'#555'}}>Generating investment signal...</div>
-              <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Analysing momentum, macro environment, and historical patterns</div>
-              <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
-                <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+              <div style={{fontSize:'14px', color:'#8a7e72'}}>Generating investment signal...</div>
+              <div style={{fontSize:'12px', color:'#4a4038', marginTop:'8px', marginBottom:'20px'}}>Analysing momentum, macro environment, and historical patterns</div>
+              <div style={{width:'200px', height:'3px', background:'#2a2520', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+                <div style={{height:'100%', background:'#a4391c', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
               </div>
             </div>
           )}
@@ -864,7 +867,7 @@ const handleFindTrade = async () => {
                     <div className="signal-section-title">Key catalysts</div>
                     <div className="signal-rationale">
                       {signalData.catalysts?.map((c, i) => (
-                        <p key={i}><span className="rationale-dot" style={{background:'#4ade80'}}></span><span>{c}</span></p>
+                        <p key={i}><span className="rationale-dot" style={{background:'#4a9e6b'}}></span><span>{c}</span></p>
                       ))}
                     </div>
                   </div>
@@ -872,7 +875,7 @@ const handleFindTrade = async () => {
                     <div className="signal-section-title">Key risks</div>
                     <div className="signal-rationale">
                       {signalData.key_risks?.map((r, i) => (
-                        <p key={i}><span className="rationale-dot" style={{background:'#f87171'}}></span><span>{r}</span></p>
+                        <p key={i}><span className="rationale-dot" style={{background:'#c94545'}}></span><span>{r}</span></p>
                       ))}
                     </div>
                   </div>
@@ -892,16 +895,16 @@ const handleFindTrade = async () => {
     <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px'}}>
       <div>
         <div style={{fontSize:'16px', fontWeight:'600', color:'#fff', letterSpacing:'-0.5px'}}>Top picks from S&P 500</div>
-        <div style={{fontSize:'12px', color:'#555', marginTop:'2px'}}>Screened stocks with strongest momentum — refreshes every 15 minutes</div>
+        <div style={{fontSize:'12px', color:'#8a7e72', marginTop:'2px'}}>Screened stocks with strongest momentum — refreshes every 15 minutes</div>
       </div>
-      {topPicksUpdated && <div style={{fontSize:'11px', color:'#444'}}>Updated {topPicksUpdated}</div>}
+      {topPicksUpdated && <div style={{fontSize:'11px', color:'#4a4038'}}>Updated {topPicksUpdated}</div>}
     </div>
 
     {topPicks.length === 0 ? (
       <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
-        <div style={{fontSize:'14px', color:'#555'}}>Scanning S&P 500...</div>
-        <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'20px auto 0', overflow:'hidden'}}>
-          <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+        <div style={{fontSize:'14px', color:'#8a7e72'}}>Scanning S&P 500...</div>
+        <div style={{width:'200px', height:'3px', background:'#2a2520', borderRadius:'2px', margin:'20px auto 0', overflow:'hidden'}}>
+          <div style={{height:'100%', background:'#a4391c', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
         </div>
       </div>
     ) : (
@@ -931,7 +934,7 @@ const handleFindTrade = async () => {
         ))}
       </div>
     )}
-    <div style={{fontSize:'11px', color:'#333', textAlign:'center', padding:'12px'}}>
+    <div style={{fontSize:'11px', color:'#4a4038', textAlign:'center', padding:'12px'}}>
       Top picks are based on momentum scoring, not financial advice. Always do your own research.
     </div>
   </div>
@@ -944,9 +947,9 @@ const handleFindTrade = async () => {
       <div className="portfolio-input-sub">Enter your holdings to get analysis of your portfolio</div>
 
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:'8px', marginBottom:'8px'}}>
-        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', padding:'0 12px'}}>Ticker</div>
-        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', padding:'0 12px'}}>Shares</div>
-        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#444', textTransform:'uppercase', padding:'0 12px'}}>Avg cost ($)</div>
+        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#4a4038', textTransform:'uppercase', padding:'0 12px'}}>Ticker</div>
+        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#4a4038', textTransform:'uppercase', padding:'0 12px'}}>Shares</div>
+        <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#4a4038', textTransform:'uppercase', padding:'0 12px'}}>Avg cost ($)</div>
         <div></div>
       </div>
 
@@ -1014,10 +1017,10 @@ const handleFindTrade = async () => {
 
     {portfolioLoading && (
       <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
-        <div style={{fontSize:'14px', color:'#555'}}>Analysing your portfolio...</div>
-        <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Fetching live prices and generating insights</div>
-        <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
-          <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+        <div style={{fontSize:'14px', color:'#8a7e72'}}>Analysing your portfolio...</div>
+        <div style={{fontSize:'12px', color:'#4a4038', marginTop:'8px', marginBottom:'20px'}}>Fetching live prices and generating insights</div>
+        <div style={{width:'200px', height:'3px', background:'#2a2520', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+          <div style={{height:'100%', background:'#a4391c', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
         </div>
       </div>
     )}
@@ -1065,7 +1068,7 @@ const handleFindTrade = async () => {
             {portfolioResults.positions.map((p, i) => (
               <tr key={i} onClick={() => { setTicker(p.ticker); setInput(p.ticker); setActiveTab('overview'); }}>
                 <td style={{color:'#fff', fontWeight:'600'}}>{p.ticker}</td>
-                <td style={{color:'#555', fontSize:'12px'}}>{p.company_name}</td>
+                <td style={{color:'#8a7e72', fontSize:'12px'}}>{p.company_name}</td>
                 <td>{p.shares}</td>
                 <td>${p.avg_cost}</td>
                 <td>${p.current_price}</td>
@@ -1149,7 +1152,7 @@ const handleFindTrade = async () => {
         <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
           <span style={{fontSize:'13px', color:'#888'}}>Hold for</span>
           <input type="number" min="1" max="365" value={finderCustomDays} onChange={e => setFinderCustomDays(parseInt(e.target.value))}
-            style={{width:'80px', background:'#0a0a0a', border:'1px solid #333', borderRadius:'6px', padding:'6px 10px', color:'#fff', fontSize:'14px', fontWeight:'500', outline:'none'}} />
+            style={{width:'80px', background:'#1a1710', border:'1px solid #2a2520', borderRadius:'6px', padding:'6px 10px', color:'#fff', fontSize:'14px', fontWeight:'500', outline:'none'}} />
           <span style={{fontSize:'13px', color:'#888'}}>days</span>
         </div>
       )}
@@ -1161,10 +1164,10 @@ const handleFindTrade = async () => {
 
     {finderLoading && (
       <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
-        <div style={{fontSize:'14px', color:'#555'}}>Scanning S&P 500 for your best trade...</div>
-        <div style={{fontSize:'12px', color:'#333', marginTop:'8px', marginBottom:'20px'}}>Matching your criteria against top momentum stocks</div>
-        <div style={{width:'200px', height:'3px', background:'#1a1a1a', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
-          <div style={{height:'100%', background:'#3b82f6', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+        <div style={{fontSize:'14px', color:'#8a7e72'}}>Scanning S&P 500 for your best trade...</div>
+        <div style={{fontSize:'12px', color:'#4a4038', marginTop:'8px', marginBottom:'20px'}}>Matching your criteria against top momentum stocks</div>
+        <div style={{width:'200px', height:'3px', background:'#2a2520', borderRadius:'2px', margin:'0 auto', overflow:'hidden'}}>
+          <div style={{height:'100%', background:'#a4391c', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
         </div>
       </div>
     )}
@@ -1224,7 +1227,7 @@ const handleFindTrade = async () => {
           <div className="signal-section-title">Why this trade</div>
           <div className="signal-rationale">
             {finderResult.rationale?.map((r, i) => (
-              <p key={i}><span className="rationale-dot" style={{background:'#4ade80'}}></span><span>{r}</span></p>
+              <p key={i}><span className="rationale-dot" style={{background:'#4a9e6b'}}></span><span>{r}</span></p>
             ))}
           </div>
         </div>
@@ -1233,7 +1236,7 @@ const handleFindTrade = async () => {
           <div className="signal-section-title">Key risks</div>
           <div className="signal-rationale">
             {finderResult.risks?.map((r, i) => (
-              <p key={i}><span className="rationale-dot" style={{background:'#f87171'}}></span><span>{r}</span></p>
+              <p key={i}><span className="rationale-dot" style={{background:'#c94545'}}></span><span>{r}</span></p>
             ))}
           </div>
         </div>
@@ -1246,7 +1249,7 @@ const handleFindTrade = async () => {
 
     {finderResult?.error && !finderLoading && (
       <div className="signal-card" style={{textAlign:'center', padding:'40px'}}>
-        <div style={{fontSize:'14px', color:'#f87171'}}>{finderResult.error}</div>
+        <div style={{fontSize:'14px', color:'#c94545'}}>{finderResult.error}</div>
       </div>
     )}
   </div>
@@ -1280,7 +1283,7 @@ const handleFindTrade = async () => {
       <div className="support-banner">
         <div className="support-banner-text">
   <strong>MacroLens is free, forever.</strong> If MacroLens has helped you make a decision, consider to support financial literacy for students who can't afford it.
-  {donateClicks > 0 && <span style={{color:'#4ade80', marginLeft:'8px', fontSize:'12px', whiteSpace:'nowrap'}}>♥ {donateClicks} people have supported so far</span>}
+  {donateClicks > 0 && <span style={{color:'#4a9e6b', marginLeft:'8px', fontSize:'12px', whiteSpace:'nowrap'}}>♥ {donateClicks} people have supported so far</span>}
 </div>
         <a href="https://www.juniorachievement.org/web/ja-usa/donate"
   target="_blank"
