@@ -55,6 +55,21 @@ def get_cached(key):
 def set_cached(key, data):
     cache[key] = (data, time.time())
 
+def call_claude(prompt, max_tokens, fallback_text):
+    """Calls Claude and returns the text, or a safe fallback if the API
+    call fails (billing/rate-limit/network) so callers can still return
+    the rest of their response instead of 500ing the whole endpoint."""
+    try:
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return message.content[0].text
+    except Exception as e:
+        print(f"Claude API error: {e}")
+        return fallback_text
+
 def format_market_cap(mc):
     if not mc:
         return "N/A"
@@ -541,13 +556,8 @@ def compare_stocks(body: dict = Body(...)):
         "No jargon without explaining it. Be balanced — every stock has tradeoffs."
     )
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return {"stocks": stocks, "summary": message.content[0].text}
+    summary = call_claude(prompt, 500, "AI comparison is temporarily unavailable, but the metrics above are live.")
+    return {"stocks": stocks, "summary": summary}
 
 @app.post("/ask")
 def ask_question(body: dict = Body(...)):
@@ -563,13 +573,8 @@ def ask_question(body: dict = Body(...)):
         f"Question: {question}"
     )
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=350,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return {"answer": message.content[0].text}
+    answer = call_claude(prompt, 350, "Sorry, I can't answer right now — the AI tutor is temporarily unavailable. Please try again shortly.")
+    return {"answer": answer}
 
 @app.post("/portfolio/analyze")
 def analyze_portfolio(holdings: list = None):
@@ -660,14 +665,8 @@ def analyze_portfolio_post(body: dict = Body(...)):
         "Be specific, data-driven, and actionable. Write for a retail investor."
     )
     
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    
-    analysis = message.content[0].text
-    
+    analysis = call_claude(prompt, 600, "Portfolio analysis is temporarily unavailable, but your live position data above is accurate.")
+
     return {
         "total_value": round(total_value, 2),
         "positions": portfolio_data,
@@ -776,19 +775,13 @@ def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
         "No markdown, no backticks, no explanation. Raw JSON only."
     )
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    raw = message.content[0].text.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
+    raw = call_claude(prompt, 1000, "")
+    raw = raw.strip().replace("```json", "").replace("```", "").strip()
 
     try:
         signal_data = json.loads(raw)
     except:
-        signal_data = {"signal": "HOLD", "confidence": 50, "error": "Could not generate signal"}
+        signal_data = {"signal": "HOLD", "confidence": 50, "error": "Signal generation is temporarily unavailable — please try again shortly."}
 
     set_cached(cache_key, signal_data)
     return signal_data
@@ -872,18 +865,13 @@ def find_trade(body: dict = Body(...)):
         "\nNo markdown, no backticks, raw JSON only."
     )
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=800,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    raw = call_claude(prompt, 800, "")
+    raw = raw.strip().replace("```json", "").replace("```", "").strip()
 
-    raw = message.content[0].text.strip().replace("```json", "").replace("```", "").strip()
-    
     try:
         result = json.loads(raw)
     except:
-        result = {"error": "Could not generate recommendation"}
+        result = {"error": "Trade finder is temporarily unavailable — please try again shortly."}
     
     return result
 
@@ -1007,13 +995,7 @@ def get_stock(ticker: str, range: str = "1mo"):
         f"{accuracy_context}"
     )
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=400,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    analysis = message.content[0].text
+    analysis = call_claude(prompt, 400, "AI analysis is temporarily unavailable, but the price data and chart above are live.")
 
     try:
         db = get_db()
