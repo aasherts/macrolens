@@ -54,7 +54,17 @@ def get_cached(key):
 
 def set_cached(key, data):
     cache[key] = (data, time.time())
-    SP500_TICKERS = [
+
+def format_market_cap(mc):
+    if not mc:
+        return "N/A"
+    if mc >= 1_000_000_000_000:
+        return f"${mc/1_000_000_000_000:.2f}T"
+    if mc >= 1_000_000_000:
+        return f"${mc/1_000_000_000:.2f}B"
+    return f"${mc/1_000_000:.2f}M"
+
+SP500_TICKERS = [
     "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","BRK-B","AVGO","JPM",
     "LLY","UNH","V","XOM","MA","COST","HD","PG","WMT","NFLX","CRM","BAC",
     "ORCL","CVX","KO","MRK","ABBV","PEP","TMO","ACN","MCD","CSCO","ABT",
@@ -79,9 +89,10 @@ def set_cached(key, data):
 ]
 
 top_picks_cache = {"data": [], "last_updated": None}
+movers_cache = {"gainers": [], "losers": [], "last_updated": None}
 
 def run_sp500_screen():
-    global top_picks_cache
+    global top_picks_cache, movers_cache
     tickers = [
         "MMM","ABT","ABBV","ACN","ADBE","AMD","AFL","AIG","APD","AKAM",
         "ALGN","ALLE","LNT","ALL","GOOGL","MO","AMZN","AEE","AAL","AEP",
@@ -155,9 +166,10 @@ def run_sp500_screen():
                         prices = closes.values
                         mom_7d = (prices[-1] - prices[-7]) / prices[-7] * 100 if len(prices) >= 7 else 0
                         mom_30d = (prices[-1] - prices[-30]) / prices[-30] * 100 if len(prices) >= 30 else 0
+                        daily_change = (prices[-1] - prices[-2]) / prices[-2] * 100 if len(prices) >= 2 else 0
                         volatility = (max(prices[-20:]) - min(prices[-20:])) / min(prices[-20:]) * 100 if len(prices) >= 20 else 0
                         score = (mom_7d * 0.4) + (mom_30d * 0.3) - (volatility * 0.1)
-                        all_scores.append({"ticker": t, "score": score, "mom_7d": round(float(mom_7d), 2), "mom_30d": round(float(mom_30d), 2), "price": round(float(prices[-1]), 2)})
+                        all_scores.append({"ticker": t, "score": score, "mom_7d": round(float(mom_7d), 2), "mom_30d": round(float(mom_30d), 2), "daily_change": round(float(daily_change), 2), "price": round(float(prices[-1]), 2)})
                     except:
                         continue
             except OSError as e:
@@ -177,6 +189,7 @@ def run_sp500_screen():
                 info = stock.info
                 company_name = info.get("shortName", s["ticker"])
                 sector = info.get("sector", "N/A")
+                beta = info.get("beta", None)
                 results.append({
                     "ticker": s["ticker"],
                     "company_name": company_name,
@@ -185,6 +198,7 @@ def run_sp500_screen():
                     "mom_7d": s["mom_7d"],
                     "mom_30d": s["mom_30d"],
                     "score": round(s["score"], 2),
+                    "beta": round(beta, 2) if beta else None,
                 })
             except:
                 continue
@@ -192,6 +206,31 @@ def run_sp500_screen():
         top_picks_cache["data"] = results
         top_picks_cache["last_updated"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         print(f"Screen complete — {len(results)} top picks found")
+
+        by_daily = sorted(all_scores, key=lambda x: x["daily_change"], reverse=True)
+        top_gainers = by_daily[:5]
+        top_losers = list(reversed(by_daily[-5:]))
+
+        def enrich_mover(m):
+            try:
+                info = yf.Ticker(m["ticker"]).info
+                return {
+                    "ticker": m["ticker"],
+                    "company_name": info.get("shortName", m["ticker"]),
+                    "price": m["price"],
+                    "change_pct": m["daily_change"],
+                }
+            except:
+                return {
+                    "ticker": m["ticker"],
+                    "company_name": m["ticker"],
+                    "price": m["price"],
+                    "change_pct": m["daily_change"],
+                }
+
+        movers_cache["gainers"] = [enrich_mover(m) for m in top_gainers]
+        movers_cache["losers"] = [enrich_mover(m) for m in top_losers]
+        movers_cache["last_updated"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     except OSError as e:
         print(f"OSError in scanner (likely fd limit) — continuing: {e}")
     except Exception as e:
@@ -445,6 +484,92 @@ def get_top_picks():
         "picks": top_picks_cache["data"],
         "last_updated": top_picks_cache["last_updated"]
     }
+
+@app.get("/movers")
+def get_movers():
+    return movers_cache
+
+@app.post("/compare")
+def compare_stocks(body: dict = Body(...)):
+    tickers = [t.upper() for t in body.get("tickers", [])][:3]
+    if len(tickers) < 2:
+        raise HTTPException(status_code=400, detail="Provide at least 2 tickers to compare")
+
+    stocks = []
+    for t in tickers:
+        try:
+            stock = yf.Ticker(t)
+            hist = stock.history(period="6mo")
+            info = stock.info
+            prices = hist["Close"].round(2).tolist()
+            dates = hist.index.strftime("%b %d").tolist()
+            current = prices[-1]
+            perf_6mo = round((prices[-1] - prices[0]) / prices[0] * 100, 2) if prices[0] else 0
+            stocks.append({
+                "ticker": t,
+                "company_name": info.get("shortName", t),
+                "prices": prices,
+                "dates": dates,
+                "current": current,
+                "pe_ratio": round(info.get("trailingPE"), 1) if info.get("trailingPE") else None,
+                "market_cap": format_market_cap(info.get("marketCap")),
+                "revenue": format_market_cap(info.get("totalRevenue")) if info.get("totalRevenue") else None,
+                "profit_margin": round(info.get("profitMargins") * 100, 2) if info.get("profitMargins") else None,
+                "beta": round(info.get("beta"), 2) if info.get("beta") else None,
+                "dividend_yield": round(info.get("dividendYield") * 100, 2) if info.get("dividendYield") else None,
+                "perf_6mo": perf_6mo,
+            })
+        except Exception as e:
+            print(f"Compare error for {t}: {e}")
+            continue
+
+    if len(stocks) < 2:
+        raise HTTPException(status_code=400, detail="Could not fetch enough data to compare")
+
+    stats_text = "\n".join([
+        f"- {s['ticker']} ({s['company_name']}): price ${s['current']}, P/E {s['pe_ratio']}, "
+        f"market cap {s['market_cap']}, revenue {s['revenue']}, profit margin {s['profit_margin']}%, "
+        f"beta {s['beta']}, dividend yield {s['dividend_yield']}%, 6mo performance {s['perf_6mo']}%"
+        for s in stocks
+    ])
+
+    prompt = (
+        "You are a friendly financial educator comparing stocks for a retail investor who is new to investing.\n\n"
+        f"Stocks to compare:\n{stats_text}\n\n"
+        "Write a plain-English comparison (4-6 sentences) covering: which looks financially stronger right now and why, "
+        "what the valuation (P/E) tells us, which has more risk (beta/volatility), and which might suit a beginner. "
+        "No jargon without explaining it. Be balanced — every stock has tradeoffs."
+    )
+
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return {"stocks": stocks, "summary": message.content[0].text}
+
+@app.post("/ask")
+def ask_question(body: dict = Body(...)):
+    question = (body.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="No question provided")
+
+    prompt = (
+        "You are a warm, patient financial educator helping a complete beginner understand investing. "
+        "Answer the question below in plain simple English with no jargon (or explain any term you must use). "
+        "Keep it to 2-4 short sentences. If the question is not about investing, money, or markets, "
+        "gently say that and redirect to investing topics.\n\n"
+        f"Question: {question}"
+    )
+
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=350,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return {"answer": message.content[0].text}
 
 @app.post("/portfolio/analyze")
 def analyze_portfolio(holdings: list = None):
@@ -846,15 +971,10 @@ def get_stock(ticker: str, range: str = "1mo"):
     fifty_two_low = info.get("fiftyTwoWeekLow", None)
     pe_ratio = info.get("trailingPE", None)
     market_cap = info.get("marketCap", None)
-
-    def format_market_cap(mc):
-        if not mc:
-            return "N/A"
-        if mc >= 1_000_000_000_000:
-            return f"${mc/1_000_000_000_000:.2f}T"
-        if mc >= 1_000_000_000:
-            return f"${mc/1_000_000_000:.2f}B"
-        return f"${mc/1_000_000:.2f}M"
+    beta = info.get("beta", None)
+    dividend_yield = info.get("dividendYield", None)
+    total_revenue = info.get("totalRevenue", None)
+    profit_margins = info.get("profitMargins", None)
 
     past_predictions = []
     try:
@@ -938,6 +1058,10 @@ def get_stock(ticker: str, range: str = "1mo"):
             "fifty_two_low": fifty_two_low,
             "pe_ratio": round(pe_ratio, 1) if pe_ratio else None,
             "market_cap": format_market_cap(market_cap),
+            "beta": round(beta, 2) if beta else None,
+            "dividend_yield": round(dividend_yield * 100, 2) if dividend_yield else None,
+            "revenue": format_market_cap(total_revenue) if total_revenue else None,
+            "profit_margin": round(profit_margins * 100, 2) if profit_margins else None,
         }
     }
     set_cached(cache_key, result)

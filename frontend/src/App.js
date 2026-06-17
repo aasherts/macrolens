@@ -1,65 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
 import './App.css';
-import { Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Filler,
-  Tooltip,
-} from 'chart.js';
 import { signInWithGoogle, signOutUser, auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { cacheGet, cacheSet, minutesAgo } from './utils/cache';
+import useDebounce from './utils/useDebounce';
+import getUpcomingMacroEvents from './utils/macroCalendar';
+import { InfoTip, Term } from './components/Tooltip';
+import FearGreedGauge from './components/FearGreedGauge';
+import PortfolioDonut from './components/PortfolioDonut';
+import Onboarding from './components/Onboarding';
+import CountUp from './components/CountUp';
+import LEARN_CURRICULUM from './data/learnContent';
+import GLOSSARY from './data/glossary';
+import { getSectorBenchmark } from './data/sectorBenchmarks';
 
-ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
-
-const crosshairPlugin = {
-  id: 'crosshair',
-  afterDraw(chart) {
-    if (!chart._crosshairX) return;
-    const { ctx, chartArea: { top, bottom } } = chart;
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(chart._crosshairX, top);
-    ctx.lineTo(chart._crosshairX, bottom);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(164,57,28,0.2)';
-    ctx.stroke();
-    ctx.restore();
-  }
-};
-
-ChartJS.register(crosshairPlugin);
+const PriceChart = lazy(() => import('./components/PriceChart'));
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://macrolens-backend.onrender.com';
-
-// ---------- localStorage cache helpers ----------
-
-function cacheGet(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function cacheSet(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
-  } catch {
-    // ignore storage errors (e.g. private browsing)
-  }
-}
-
-function minutesAgo(ts) {
-  if (!ts) return null;
-  const mins = Math.round((Date.now() - ts) / 60000);
-  return mins;
-}
 
 // ---------- Small inline icons ----------
 
@@ -78,34 +35,40 @@ const IconBriefcase = () => (
 const IconTarget = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>
 );
+const IconCompare = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3v18M15 3v18" /><path d="M4 8h5M15 8h5M4 16h5M15 16h5" /></svg>
+);
+const IconLearn = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
+);
 const IconSearch = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+);
+const IconBell = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
 );
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: IconOverview },
   { id: 'signal', label: 'Signal', icon: IconSignal },
+  { id: 'compare', label: 'Compare', icon: IconCompare },
   { id: 'picks', label: 'Top Picks', icon: IconStar },
   { id: 'portfolio', label: 'Portfolio', icon: IconBriefcase },
   { id: 'finder', label: 'Trade Finder', icon: IconTarget },
+  { id: 'learn', label: 'Learn', icon: IconLearn },
 ];
 
 const PAGE_TITLES = {
   overview: 'Overview',
   signal: 'Investment Signal',
+  compare: 'Compare Stocks',
   picks: 'Top Picks',
   portfolio: 'Your Portfolio',
   finder: 'Trade Finder',
+  learn: 'Learn',
 };
 
-function InfoTip({ text }) {
-  return (
-    <span className="info-tip" tabIndex={0}>
-      ?
-      <span className="info-tip-bubble">{text}</span>
-    </span>
-  );
-}
+const SECTORS_LIST = ['All', 'Technology', 'Healthcare', 'Energy', 'Financials', 'Consumer', 'Industrials', 'Utilities'];
 
 function isMarketOpenNow() {
   const now = new Date();
@@ -119,11 +82,37 @@ function isMarketOpenNow() {
   return isWeekday && minutesNow >= 9 * 60 + 30 && minutesNow < 16 * 60;
 }
 
+function loadAlerts() {
+  try {
+    return JSON.parse(localStorage.getItem('ml_alerts') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveAlerts(alerts) {
+  try {
+    localStorage.setItem('ml_alerts', JSON.stringify(alerts));
+  } catch {
+    // ignore
+  }
+}
+
+function loadLearnProgress() {
+  try {
+    return JSON.parse(localStorage.getItem('ml_learn_progress') || '[]');
+  } catch {
+    return [];
+  }
+}
+
 function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [backendSlow, setBackendSlow] = useState(false);
   const [ticker, setTicker] = useState('AAPL');
   const [input, setInput] = useState('AAPL');
-  const [stockData, setStockData] = useState(null);
+  const debouncedInput = useDebounce(input, 300);
+  const [stockData, setStockData] = useState(() => cacheGet(`ml_stock_AAPL_1mo`)?.data || null);
   const [signalData, setSignalData] = useState(null);
   const [signalLoading, setSignalLoading] = useState(false);
   const [range, setRange] = useState('1mo');
@@ -135,7 +124,7 @@ function App() {
   const [newsData, setNewsData] = useState([]);
   const [marketData, setMarketData] = useState(() => cacheGet('ml_market_data')?.data || []);
   const [marketUpdatedAt, setMarketUpdatedAt] = useState(() => cacheGet('ml_market_data')?.ts || null);
-  const [marketIsFresh, setMarketIsFresh] = useState(false);
+  const [marketFetchState, setMarketFetchState] = useState('idle'); // idle | fetching | live | stale
   const [activeTab, setActiveTab] = useState('overview');
   const [horizon, setHorizon] = useState('medium');
   const [customDays, setCustomDays] = useState(30);
@@ -162,61 +151,112 @@ function App() {
   const [finderCustomDays, setFinderCustomDays] = useState(7);
   const [topPicks, setTopPicks] = useState(() => cacheGet('ml_top_picks')?.data || []);
   const [topPicksUpdated, setTopPicksUpdated] = useState('');
-  const [portfolio, setPortfolio] = useState([
-    { ticker: '', shares: '', avg_cost: '' }
-  ]);
+  const [pickSectorFilter, setPickSectorFilter] = useState('All');
+  const [pickTimeframeFilter, setPickTimeframeFilter] = useState('7d');
+  const [pickRiskFilter, setPickRiskFilter] = useState('All');
+  const [portfolio, setPortfolio] = useState([{ ticker: '', shares: '', avg_cost: '' }]);
   const [portfolioResults, setPortfolioResults] = useState(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [movers, setMovers] = useState({ gainers: [], losers: [] });
+  const [compareTickers, setCompareTickers] = useState(['AAPL', 'MSFT']);
+  const [compareInput, setCompareInput] = useState('');
+  const [compareResult, setCompareResult] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [learnOpenTopic, setLearnOpenTopic] = useState(null);
+  const [learnProgress, setLearnProgress] = useState(loadLearnProgress);
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askAnswer, setAskAnswer] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
+  const [alerts, setAlerts] = useState(loadAlerts);
+  const [alertBanner, setAlertBanner] = useState(null);
+  const [showAlertPanel, setShowAlertPanel] = useState(false);
+  const [alertTargetPrice, setAlertTargetPrice] = useState('');
+  const [alertDirection, setAlertDirection] = useState('above');
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('ml_onboarding_done'));
   const chartRef = useRef(null);
 
-  // Splash screen: hide after first market data arrives, or after 8s max.
+  // ---------- Loading fix: keepalive ping fires immediately on mount ----------
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 8000);
+    fetch(`${API_URL}/market-overview`).catch(() => {});
+  }, []);
+
+  // Splash screen never blocks the user for more than 3 seconds.
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 3000);
     return () => clearTimeout(timer);
   }, []);
 
+  // Friendly message if the backend hasn't responded within 10s.
   useEffect(() => {
-    setStockData(null);
+    const timer = setTimeout(() => {
+      if (marketFetchState !== 'live') setBackendSlow(true);
+    }, 10000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const cached = cacheGet(`ml_stock_${ticker}_${range}`);
+    if (cached) setStockData(cached.data);
+    else setStockData(null);
     setSignalData(null);
     setHoverPrice(null);
     setHoverTime(null);
     fetch(`${API_URL}/stock/${ticker}?range=${range}`)
       .then(res => res.json())
-      .then(data => setStockData(data));
+      .then(data => {
+        setStockData(data);
+        cacheSet(`ml_stock_${ticker}_${range}`, data);
+      })
+      .catch(() => {});
   }, [ticker, range]);
 
   useEffect(() => {
     fetch(`${API_URL}/macro`)
       .then(res => res.json())
-      .then(data => { setMacroData(data); cacheSet('ml_macro_data', data); });
+      .then(data => { setMacroData(data); cacheSet('ml_macro_data', data); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (stockData) {
       fetch(`${API_URL}/news/${ticker}?company=${encodeURIComponent(stockData.company_name)}`)
         .then(res => res.json())
-        .then(data => setNewsData((data.articles || []).slice(0, 5)));
+        .then(data => setNewsData((data.articles || []).slice(0, 5)))
+        .catch(() => {});
     }
   }, [stockData, ticker]);
 
   useEffect(() => {
-    // Immediately ping the backend on mount to wake a sleeping Render instance.
     const fetchMarket = () => {
-      setMarketIsFresh(false);
+      setMarketFetchState('fetching');
       fetch(`${API_URL}/market-overview`)
         .then(res => res.json())
         .then(data => {
           const items = data.items || [];
           setMarketData(items);
           setMarketUpdatedAt(Date.now());
-          setMarketIsFresh(true);
+          setMarketFetchState('live');
+          setBackendSlow(false);
           cacheSet('ml_market_data', items);
           setShowSplash(false);
         })
-        .catch(() => {});
+        .catch(() => setMarketFetchState('stale'));
     };
     fetchMarket();
     const interval = setInterval(fetchMarket, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const fetchMovers = () => {
+      fetch(`${API_URL}/movers`)
+        .then(res => res.json())
+        .then(data => setMovers({ gainers: data.gainers || [], losers: data.losers || [] }))
+        .catch(() => {});
+    };
+    fetchMovers();
+    const interval = setInterval(fetchMovers, 300000);
     return () => clearInterval(interval);
   }, []);
 
@@ -257,7 +297,8 @@ function App() {
   useEffect(() => {
     fetch(`${API_URL}/donate-clicks`)
       .then(res => res.json())
-      .then(data => setDonateClicks(data.clicks || 0));
+      .then(data => setDonateClicks(data.clicks || 0))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -269,20 +310,47 @@ function App() {
           setTopPicks(picks);
           setTopPicksUpdated(data.last_updated || '');
           cacheSet('ml_top_picks', picks);
-        });
+        })
+        .catch(() => {});
     }
   }, [activeTab]);
 
-  const handleInput = (e) => {
-    const val = e.target.value;
-    setInput(val);
-    if (val.length > 1) {
-      fetch(`${API_URL}/search/${val}`)
+  // ---------- Price alerts: check against latest stock data ----------
+  useEffect(() => {
+    if (!stockData) return;
+    let changed = false;
+    const remaining = [];
+    alerts.forEach(a => {
+      if (a.ticker !== stockData.ticker) { remaining.push(a); return; }
+      const hit = a.direction === 'above' ? stockData.current >= a.target : stockData.current <= a.target;
+      if (hit) {
+        changed = true;
+        setAlertBanner(`${a.ticker} is now ${a.direction === 'above' ? 'above' : 'below'} $${a.target} (currently $${stockData.current})`);
+      } else {
+        remaining.push(a);
+      }
+    });
+    if (changed) {
+      setAlerts(remaining);
+      saveAlerts(remaining);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockData]);
+
+  useEffect(() => {
+    if (debouncedInput.length > 1 && debouncedInput === input) {
+      fetch(`${API_URL}/search/${debouncedInput}`)
         .then(res => res.json())
-        .then(data => { setSearchResults(data.results); setShowDropdown(true); });
-    } else {
+        .then(data => { setSearchResults(data.results); setShowDropdown(true); })
+        .catch(() => {});
+    } else if (debouncedInput.length <= 1) {
       setShowDropdown(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedInput]);
+
+  const handleInput = (e) => {
+    setInput(e.target.value);
   };
 
   const handleSelect = (symbol) => {
@@ -371,89 +439,6 @@ function App() {
     setUserWatchlist(prev => prev.filter(w => w.ticker !== tickerSymbol.toUpperCase()));
   };
 
-  const last = stockData ? stockData.prices[stockData.prices.length - 1] : null;
-
-  const priceData = stockData ? {
-    labels: [...stockData.dates, ...stockData.prediction.dates],
-    datasets: [
-      {
-        label: 'Price',
-        data: [...stockData.prices, null, null, null],
-        borderColor: '#a4391c',
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.3,
-        fill: false,
-      },
-      {
-        label: 'Predicted',
-        data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.mid],
-        borderColor: '#b08a3e',
-        borderWidth: 2,
-        borderDash: [5, 3],
-        pointRadius: 0,
-        tension: 0.3,
-        fill: false,
-      },
-      {
-        label: 'High band',
-        data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.high],
-        borderColor: 'transparent',
-        backgroundColor: 'rgba(164,57,28,0.08)',
-        pointRadius: 0,
-        tension: 0.3,
-        fill: '+1',
-      },
-      {
-        label: 'Low band',
-        data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.low],
-        borderColor: 'transparent',
-        pointRadius: 0,
-        tension: 0.3,
-        fill: false,
-      },
-    ]
-  } : { labels: [], datasets: [] };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    onHover: (event, elements, chart) => {
-      if (!event.native) return;
-      const points = chart.getElementsAtEventForMode(event.native, 'index', { intersect: false }, true);
-      if (points.length > 0) {
-        const idx = points[0].index;
-        const price = chart.data.datasets[0].data[idx];
-        chart._crosshairX = points[0].element.x;
-        chart.draw();
-        if (price !== null && price !== undefined) {
-          setHoverPrice(price);
-          setHoverTime(chart.data.labels[idx]);
-        }
-      }
-    },
-    plugins: { legend: { display: false }, tooltip: { enabled: false } },
-    scales: {
-      x: { grid: { display: false }, ticks: { color: '#9c8e82', font: { size: 11 } } },
-      y: { grid: { color: 'rgba(26,21,16,0.05)' }, ticks: { color: '#9c8e82', font: { size: 11 }, callback: v => '$' + v } }
-    }
-  };
-
-  const ranges = ['1d', '1w', '1mo', '6mo', 'ytd', '1y', '5y'];
-
-  const getRiskColor = (level) => {
-    if (level === 'LOW') return 'pos';
-    if (level === 'HIGH') return 'neg';
-    return 'warn';
-  };
-
-  const getRiskSegments = (level) => {
-    if (level === 'LOW') return 1;
-    if (level === 'MEDIUM') return 2;
-    return 3;
-  };
-
   const handlePortfolioAnalysis = async () => {
     const validHoldings = portfolio.filter(h => h.ticker && h.shares && h.avg_cost);
     if (validHoldings.length === 0) return;
@@ -503,9 +488,258 @@ function App() {
     setFinderLoading(false);
   };
 
+  const handleCompare = async () => {
+    const tickers = compareTickers.filter(t => t.trim());
+    if (tickers.length < 2) return;
+    setCompareLoading(true);
+    setCompareResult(null);
+    try {
+      const res = await fetch(`${API_URL}/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickers })
+      });
+      const data = await res.json();
+      setCompareResult(data);
+    } catch (e) {
+      console.error(e);
+    }
+    setCompareLoading(false);
+  };
+
+  const addCompareTicker = () => {
+    if (compareTickers.length >= 3 || !compareInput.trim()) return;
+    setCompareTickers([...compareTickers, compareInput.trim().toUpperCase()]);
+    setCompareInput('');
+  };
+
+  const handleAsk = async () => {
+    if (!askQuestion.trim()) return;
+    setAskLoading(true);
+    setAskAnswer('');
+    try {
+      const res = await fetch(`${API_URL}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: askQuestion })
+      });
+      const data = await res.json();
+      setAskAnswer(data.answer || "Sorry, I couldn't answer that right now.");
+    } catch {
+      setAskAnswer("Sorry, I couldn't reach MacroLens right now — try again in a moment.");
+    }
+    setAskLoading(false);
+  };
+
+  const markTopicRead = (id) => {
+    if (learnProgress.includes(id)) return;
+    const updated = [...learnProgress, id];
+    setLearnProgress(updated);
+    try { localStorage.setItem('ml_learn_progress', JSON.stringify(updated)); } catch {}
+  };
+
+  const handleAddAlert = () => {
+    if (!alertTargetPrice || !stockData) return;
+    const newAlert = { ticker: stockData.ticker, target: parseFloat(alertTargetPrice), direction: alertDirection };
+    const updated = [...alerts, newAlert];
+    setAlerts(updated);
+    saveAlerts(updated);
+    setAlertTargetPrice('');
+    setShowAlertPanel(false);
+  };
+
+  const removeAlert = (idx) => {
+    const updated = alerts.filter((_, i) => i !== idx);
+    setAlerts(updated);
+    saveAlerts(updated);
+  };
+
+  const completeOnboarding = () => {
+    localStorage.setItem('ml_onboarding_done', '1');
+    setShowOnboarding(false);
+  };
+
+  const onboardingAnalyse = (sym) => {
+    completeOnboarding();
+    setTicker(sym);
+    setInput(sym);
+    setActiveTab('overview');
+  };
+
+  const last = stockData ? stockData.prices[stockData.prices.length - 1] : null;
+
+  const priceData = useMemo(() => {
+    if (!stockData) return { labels: [], datasets: [] };
+    return {
+      labels: [...stockData.dates, ...stockData.prediction.dates],
+      datasets: [
+        {
+          label: 'Price',
+          data: [...stockData.prices, null, null, null],
+          borderColor: '#a4391c',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'Predicted',
+          data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.mid],
+          borderColor: '#b08a3e',
+          borderWidth: 2,
+          borderDash: [5, 3],
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'High band',
+          data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.high],
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(164,57,28,0.08)',
+          pointRadius: 0,
+          tension: 0.3,
+          fill: '+1',
+        },
+        {
+          label: 'Low band',
+          data: [...stockData.prices.map((_, i) => i === stockData.prices.length - 1 ? last : null), ...stockData.prediction.low],
+          borderColor: 'transparent',
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+        },
+      ]
+    };
+  }, [stockData, last]);
+
+  const comparePriceData = useMemo(() => {
+    if (!compareResult) return { labels: [], datasets: [] };
+    const lineColors = ['#a4391c', '#b08a3e', '#2d7a4f'];
+    const labels = compareResult.stocks[0]?.dates || [];
+    return {
+      labels,
+      datasets: compareResult.stocks.map((s, i) => ({
+        label: s.ticker,
+        data: s.prices,
+        borderColor: lineColors[i % lineColors.length],
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false,
+      })),
+    };
+  }, [compareResult]);
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    onHover: (event, elements, chart) => {
+      if (!event.native) return;
+      const points = chart.getElementsAtEventForMode(event.native, 'index', { intersect: false }, true);
+      if (points.length > 0) {
+        const idx = points[0].index;
+        const price = chart.data.datasets[0].data[idx];
+        chart._crosshairX = points[0].element.x;
+        chart.draw();
+        if (price !== null && price !== undefined) {
+          setHoverPrice(price);
+          setHoverTime(chart.data.labels[idx]);
+        }
+      }
+    },
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: '#9c8e82', font: { size: 11 } } },
+      y: { grid: { color: 'rgba(26,21,16,0.05)' }, ticks: { color: '#9c8e82', font: { size: 11 }, callback: v => '$' + v } }
+    }
+  };
+
+  const compareChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: true, position: 'bottom', labels: { color: '#6b5e52', font: { size: 11 } } }, tooltip: { enabled: true } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: '#9c8e82', font: { size: 11 } } },
+      y: { grid: { color: 'rgba(26,21,16,0.05)' }, ticks: { color: '#9c8e82', font: { size: 11 }, callback: v => '$' + v } }
+    }
+  };
+
+  const ranges = ['1d', '1w', '1mo', '6mo', 'ytd', '1y', '5y'];
+
+  const getRiskColor = (level) => {
+    if (level === 'LOW') return 'pos';
+    if (level === 'HIGH') return 'neg';
+    return 'warn';
+  };
+
+  const getRiskSegments = (level) => {
+    if (level === 'LOW') return 1;
+    if (level === 'MEDIUM') return 2;
+    return 3;
+  };
+
+  // ---------- Fear & Greed: computed client-side from VIX + S&P momentum ----------
+  const fearGreed = useMemo(() => {
+    const vix = macroData?.vix ? parseFloat(macroData.vix.value) : null;
+    const sp500 = marketData.find(m => m.name === 'S&P 500');
+    if (vix === null && !sp500) return null;
+
+    // VIX: ~12 (calm/greedy) to ~35+ (fearful). Invert and normalize to 0-100.
+    const vixScore = vix !== null ? Math.max(0, Math.min(100, 100 - ((vix - 12) / (35 - 12)) * 100)) : 50;
+    // S&P momentum: daily % change, scaled so +/-2% maps to a big swing.
+    const momScore = sp500 ? Math.max(0, Math.min(100, 50 + sp500.change_pct * 18)) : 50;
+    const score = Math.round(vixScore * 0.6 + momScore * 0.4);
+
+    let explanation;
+    if (score <= 20) explanation = "Investors are very fearful — markets may be oversold, which sometimes (not always) creates opportunities for long-term buyers, but volatility is high.";
+    else if (score <= 40) explanation = "There's meaningful fear in the market. Prices may be choppy — a good time to stick to your plan rather than react emotionally.";
+    else if (score <= 60) explanation = "Sentiment is fairly balanced. No strong emotional extreme is driving prices either way right now.";
+    else if (score <= 80) explanation = "Investors are feeling confident. Markets can keep climbing, but greed-driven rallies can also set up for a pullback.";
+    else explanation = "Extreme optimism is in the air. Historically, extreme greed has sometimes preceded a cooling-off period — worth being mindful of, not panicked about.";
+
+    return { score, explanation };
+  }, [macroData, marketData]);
+
+  // ---------- Top picks screener filters ----------
+  const filteredPicks = useMemo(() => {
+    return topPicks.filter(p => {
+      if (pickSectorFilter !== 'All' && !(p.sector || '').toLowerCase().includes(pickSectorFilter.toLowerCase())) return false;
+      const mom = pickTimeframeFilter === '7d' ? p.mom_7d : p.mom_30d;
+      if (mom === undefined || mom === null) return false;
+      if (pickRiskFilter !== 'All') {
+        const beta = p.beta;
+        if (beta === null || beta === undefined) return pickRiskFilter === 'Medium';
+        if (pickRiskFilter === 'Low' && beta >= 1.0) return false;
+        if (pickRiskFilter === 'Medium' && (beta < 1.0 || beta > 1.5)) return false;
+        if (pickRiskFilter === 'High' && beta <= 1.5) return false;
+      }
+      return true;
+    });
+  }, [topPicks, pickSectorFilter, pickTimeframeFilter, pickRiskFilter]);
+
+  // ---------- Portfolio sector commentary vs S&P 500 benchmark ----------
+  const sectorCommentary = useMemo(() => {
+    if (!portfolioResults?.sectors) return [];
+    return Object.entries(portfolioResults.sectors)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([sector, weight]) => {
+        const benchmark = getSectorBenchmark(sector);
+        if (benchmark === null) return `Your portfolio is ${Math.round(weight)}% ${sector}.`;
+        const diff = weight - benchmark;
+        if (Math.abs(diff) < 5) return `Your ${sector} weighting (${Math.round(weight)}%) is close to the S&P 500 average of ${benchmark}%.`;
+        if (diff > 0) return `Your portfolio is ${Math.round(weight)}% ${sector}, which is above the S&P 500 average of ${benchmark}% — this means higher potential returns from that sector but also more concentration risk.`;
+        return `Your portfolio is ${Math.round(weight)}% ${sector}, below the S&P 500 average of ${benchmark}% — you're relatively underexposed to this sector.`;
+      });
+  }, [portfolioResults]);
+
   const marketOpen = isMarketOpenNow();
   const staleMinutes = minutesAgo(marketUpdatedAt);
   const isSaved = !!(stockData && userWatchlist.some(w => w.ticker === ticker.toUpperCase()));
+  const macroEvents = useMemo(() => getUpcomingMacroEvents(), []);
 
   const SearchInput = ({ className }) => (
     <div className={className} style={{ position: 'relative' }}>
@@ -532,7 +766,7 @@ function App() {
   return (
     <div className="app">
       {showSplash && (
-        <div className="splash" style={{ opacity: showSplash ? 1 : 0 }}>
+        <div className="splash">
           <img src="/shortley-shield.png" alt="MacroLens shield" className="splash-shield" />
           <div className="splash-brand">MacroLens</div>
           <div className="splash-status">
@@ -542,13 +776,30 @@ function App() {
         </div>
       )}
 
+      {showOnboarding && !showSplash && (
+        <Onboarding onComplete={completeOnboarding} onAnalyse={onboardingAnalyse} />
+      )}
+
+      {alertBanner && (
+        <div className="alert-banner">
+          🔔 {alertBanner}
+          <button onClick={() => setAlertBanner(null)}>✕</button>
+        </div>
+      )}
+
+      {backendSlow && marketFetchState !== 'live' && (
+        <div className="backend-slow-banner">
+          Market data is waking up — showing last known data.
+        </div>
+      )}
+
       <div className="app-shell">
         <div className="sidebar">
           <div className="sidebar-logo">
             <img src="/shortley-shield.png" alt="Shortley shield" className="sidebar-shield" />
             <span className="sidebar-brand">MacroLens</span>
           </div>
-          <div className="sidebar-tagline">Financial intelligence for everyone</div>
+          <div className="sidebar-tagline">"Breaking down the walls of financial inequality, one insight at a time."</div>
 
           <div className="sidebar-section-label">Explore</div>
           <div className="sidebar-nav">
@@ -610,17 +861,35 @@ function App() {
               <button className="mobile-search-toggle" onClick={() => setMobileSearchOpen(prev => !prev)}>
                 <IconSearch />
               </button>
+              <div className="bell-wrap" onClick={() => setShowAlertPanel(prev => !prev)}>
+                <IconBell />
+                {alerts.length > 0 && <span className="bell-count">{alerts.length}</span>}
+                {showAlertPanel && (
+                  <div className="bell-panel" onClick={e => e.stopPropagation()}>
+                    <div className="bell-panel-title">Active price alerts</div>
+                    {alerts.length === 0 ? (
+                      <div className="bell-panel-empty">No active alerts. Set one from any stock's Overview page.</div>
+                    ) : (
+                      alerts.map((a, i) => (
+                        <div key={i} className="bell-panel-item">
+                          <span>{a.ticker} {a.direction} ${a.target}</span>
+                          <span className="bell-panel-remove" onClick={() => removeAlert(i)}>✕</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="market-status">
                 <span className={`status-dot ${marketOpen ? 'live' : 'closed'}`}></span>
                 <span>{marketOpen ? 'Market Open' : 'Market Closed'}</span>
               </div>
               <div className="market-status">
-                <span className={`status-dot ${marketIsFresh ? 'live' : 'updating'}`}></span>
-                <span>{marketIsFresh ? 'Live' : 'Updating...'}</span>
+                <span className={`status-dot ${marketFetchState === 'live' ? 'live' : marketFetchState === 'fetching' ? 'updating' : 'closed'}`}></span>
+                <span>
+                  {marketFetchState === 'live' ? 'Live' : marketFetchState === 'fetching' ? 'Updating...' : staleMinutes !== null ? `Last updated ${staleMinutes}m ago` : 'Connecting...'}
+                </span>
               </div>
-              {!marketIsFresh && staleMinutes !== null && staleMinutes > 0 && (
-                <span className="stale-badge">Data from {staleMinutes}m ago</span>
-              )}
             </div>
           </div>
 
@@ -700,7 +969,7 @@ function App() {
             </div>
           )}
 
-          <div className="page">
+          <div className="page" key={activeTab}>
 
             {activeTab === 'overview' && (
               <div className="overview-grid">
@@ -712,12 +981,17 @@ function App() {
                         <div className="hero-ticker-tag">{ticker.toUpperCase()}</div>
                       </div>
                       {stockData && (
-                        <button
-                          className={`watchlist-save-btn ${isSaved ? 'saved' : ''}`}
-                          onClick={() => isSaved ? handleRemoveFromWatchlist(ticker) : handleAddToWatchlist(ticker, stockData.company_name)}
-                        >
-                          {isSaved ? '★ Saved' : '☆ Save to watchlist'}
-                        </button>
+                        <div style={{display:'flex', gap:'8px'}}>
+                          <button
+                            className={`watchlist-save-btn ${isSaved ? 'saved' : ''}`}
+                            onClick={() => isSaved ? handleRemoveFromWatchlist(ticker) : handleAddToWatchlist(ticker, stockData.company_name)}
+                          >
+                            {isSaved ? '★ Saved' : '☆ Save to watchlist'}
+                          </button>
+                          <button className="watchlist-save-btn" onClick={() => document.getElementById('alert-inline-form')?.scrollIntoView({ behavior: 'smooth' })}>
+                            🔔 Set alert
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -729,7 +1003,7 @@ function App() {
                     ) : (
                       <>
                         <div className="hero-price">
-                          ${hoverPrice ? hoverPrice.toFixed(2) : stockData.current}
+                          $<CountUp value={hoverPrice ? hoverPrice : stockData.current} decimals={2} />
                         </div>
                         <div className="hero-change-row">
                           <span className={`change-pill ${stockData.change >= 0 ? 'pos' : 'neg'}`}>
@@ -740,24 +1014,37 @@ function App() {
                           </span>
                         </div>
 
+                        <div id="alert-inline-form" className="alert-inline-form">
+                          <span>Alert me when {ticker.toUpperCase()} goes</span>
+                          <select value={alertDirection} onChange={e => setAlertDirection(e.target.value)}>
+                            <option value="above">above</option>
+                            <option value="below">below</option>
+                          </select>
+                          <input type="number" placeholder="price" value={alertTargetPrice} onChange={e => setAlertTargetPrice(e.target.value)} />
+                          <button className="auth-btn primary" onClick={handleAddAlert}>Set alert</button>
+                        </div>
+
                         <div className="quick-stats">
                           <div>
                             <div className="quick-stat-label">
                               Market Cap
-                              <InfoTip text="The total value of all shares — like the company's price tag." />
+                              <InfoTip term="market cap" />
                             </div>
                             <div className="quick-stat-value">{stockData?.sentiment?.market_cap || '--'}</div>
                           </div>
                           <div>
                             <div className="quick-stat-label">
                               P/E Ratio
-                              <InfoTip text="Price divided by earnings per share. A simple way to see if a stock looks expensive relative to its profits." />
+                              <InfoTip term="p/e ratio" />
                             </div>
                             <div className="quick-stat-value">{stockData?.sentiment?.pe_ratio || '--'}</div>
                           </div>
                           <div>
-                            <div className="quick-stat-label">Volume</div>
-                            <div className="quick-stat-value">--</div>
+                            <div className="quick-stat-label">
+                              Dividend Yield
+                              <InfoTip term="dividend yield" />
+                            </div>
+                            <div className="quick-stat-value">{stockData?.sentiment?.dividend_yield ? `${stockData.sentiment.dividend_yield}%` : '--'}</div>
                           </div>
                           <div>
                             <div className="quick-stat-label">52w Range</div>
@@ -782,7 +1069,11 @@ function App() {
                       </div>
                     </div>
                     <div className="chart-wrapper">
-                      {stockData ? <Line ref={chartRef} data={priceData} options={chartOptions} /> : (
+                      {stockData ? (
+                        <Suspense fallback={<div className="skeleton skeleton-chart"></div>}>
+                          <PriceChart ref={chartRef} data={priceData} options={chartOptions} />
+                        </Suspense>
+                      ) : (
                         <div className="skeleton skeleton-chart"></div>
                       )}
                     </div>
@@ -818,7 +1109,7 @@ function App() {
                 <div className="right-col">
                   <div className="card signal-summary-card">
                     <div className="card-title">Signal</div>
-                    <div className={`signal-summary-badge ${signalData?.signal === 'BUY' ? 'buy' : signalData?.signal === 'SELL' ? 'sell' : 'hold'}`}
+                    <div className="signal-summary-badge"
                       style={{
                         background: signalData?.signal === 'BUY' ? 'var(--pos-soft)' : signalData?.signal === 'SELL' ? 'var(--neg-soft)' : 'var(--gold-soft)',
                         color: signalData?.signal === 'BUY' ? 'var(--pos)' : signalData?.signal === 'SELL' ? 'var(--neg)' : 'var(--gold)',
@@ -828,6 +1119,39 @@ function App() {
                     <div>
                       <span className="signal-summary-link" onClick={() => setActiveTab('signal')}>View full signal →</span>
                     </div>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-title">Fear &amp; Greed</div>
+                    {fearGreed ? (
+                      <FearGreedGauge score={fearGreed.score} explanation={fearGreed.explanation} />
+                    ) : (
+                      <div className="skeleton skeleton-line" style={{height: '90px'}}></div>
+                    )}
+                  </div>
+
+                  <div className="card">
+                    <div className="card-title">Market Movers</div>
+                    <div className="movers-col-label">Top Gainers</div>
+                    {movers.gainers.length === 0 ? (
+                      <div className="skeleton skeleton-line" style={{width:'100%'}}></div>
+                    ) : movers.gainers.map((m, i) => (
+                      <div key={i} className="mover-row" onClick={() => { setTicker(m.ticker); setInput(m.ticker); }}>
+                        <span className="mover-ticker">{m.ticker}</span>
+                        <span className="mover-name">{m.company_name}</span>
+                        <span className="pos">+{m.change_pct}%</span>
+                      </div>
+                    ))}
+                    <div className="movers-col-label" style={{marginTop: '10px'}}>Top Losers</div>
+                    {movers.losers.length === 0 ? (
+                      <div className="skeleton skeleton-line" style={{width:'100%'}}></div>
+                    ) : movers.losers.map((m, i) => (
+                      <div key={i} className="mover-row" onClick={() => { setTicker(m.ticker); setInput(m.ticker); }}>
+                        <span className="mover-ticker">{m.ticker}</span>
+                        <span className="mover-name">{m.company_name}</span>
+                        <span className="neg">{m.change_pct}%</span>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="card">
@@ -843,8 +1167,7 @@ function App() {
                     </div>
                     <div className="macro-row">
                       <span className="macro-name">
-                        CPI Inflation
-                        <InfoTip text="Consumer Price Index — tracks how fast the prices of everyday goods are rising." />
+                        <Term name="cpi">CPI Inflation</Term>
                       </span>
                       <span className="macro-val">
                         {macroData?.cpi ? macroData.cpi.value : '--'}
@@ -860,8 +1183,7 @@ function App() {
                     </div>
                     <div className="macro-row">
                       <span className="macro-name">
-                        VIX
-                        <InfoTip text="The 'fear index' — measures how nervous the market is. Higher means more uncertainty." />
+                        <Term name="vix">VIX</Term>
                       </span>
                       <span className="macro-val">
                         {macroData?.vix ? macroData.vix.value : '--'}
@@ -875,6 +1197,19 @@ function App() {
                         <span className={`trend-arrow ${macroData?.unemployment?.change > 0 ? 'up' : 'down'}`}>{macroData?.unemployment ? (macroData.unemployment.change > 0 ? '↑' : '↓') : ''}</span>
                       </span>
                     </div>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-title">This Week in Markets</div>
+                    {macroEvents.map((e, i) => (
+                      <div key={i} className={`calendar-row ${e.isThisWeek ? 'this-week' : ''}`}>
+                        <div className="calendar-date">{e.dateLabel}</div>
+                        <div>
+                          <div className="calendar-name">{e.name}</div>
+                          <div className="calendar-why">{e.why}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="card">
@@ -982,7 +1317,7 @@ function App() {
                         <div className="signal-stat">
                           <div className="signal-stat-label">
                             Stop Loss
-                            <InfoTip text="The price at which you automatically sell to prevent bigger losses." />
+                            <InfoTip term="stop loss" />
                           </div>
                           <div className="signal-stat-value neg">${signalData.stop_loss}</div>
                           <div className="signal-stat-sub">Max loss protection</div>
@@ -1058,6 +1393,92 @@ function App() {
               </div>
             )}
 
+            {activeTab === 'compare' && (
+              <div>
+                <div className="page-header">
+                  <h1>Compare Stocks</h1>
+                  <p>Compare 2-3 stocks side by side — e.g. AAPL vs MSFT vs GOOGL — to see which looks financially stronger.</p>
+                </div>
+
+                <div className="portfolio-input">
+                  <div className="compare-tickers-row">
+                    {compareTickers.map((t, i) => (
+                      <span key={i} className="compare-ticker-chip">
+                        {t}
+                        <span onClick={() => setCompareTickers(compareTickers.filter((_, idx) => idx !== i))}>✕</span>
+                      </span>
+                    ))}
+                    {compareTickers.length < 3 && (
+                      <input
+                        className="holding-input"
+                        style={{ width: '120px' }}
+                        placeholder="Add ticker..."
+                        value={compareInput}
+                        onChange={e => setCompareInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => e.key === 'Enter' && addCompareTicker()}
+                      />
+                    )}
+                    {compareTickers.length < 3 && (
+                      <button className="auth-btn" onClick={addCompareTicker}>+ Add</button>
+                    )}
+                  </div>
+                  <button className="auth-btn primary" style={{ marginTop: '14px' }} onClick={handleCompare} disabled={compareLoading || compareTickers.length < 2}>
+                    {compareLoading ? 'Comparing...' : 'Compare stocks'}
+                  </button>
+                </div>
+
+                {compareLoading && (
+                  <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
+                    <div style={{fontSize:'14px', color:'#6b5e52'}}>Pulling financials for {compareTickers.join(', ')}...</div>
+                    <div style={{width:'200px', height:'3px', background:'#e8e2d9', borderRadius:'2px', margin:'20px auto 0', overflow:'hidden'}}>
+                      <div style={{height:'100%', background:'#a4391c', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
+                    </div>
+                  </div>
+                )}
+
+                {compareResult && !compareLoading && (
+                  <>
+                    <div className="card" style={{ marginBottom: '16px' }}>
+                      <div className="card-title">6-Month Performance</div>
+                      <div className="chart-wrapper">
+                        <Suspense fallback={<div className="skeleton skeleton-chart"></div>}>
+                          <PriceChart data={comparePriceData} options={compareChartOptions} />
+                        </Suspense>
+                      </div>
+                    </div>
+
+                    <div className="card" style={{ marginBottom: '16px', overflowX: 'auto' }}>
+                      <div className="card-title">Side by Side</div>
+                      <table className="portfolio-table">
+                        <thead>
+                          <tr>
+                            <th>Metric</th>
+                            {compareResult.stocks.map(s => <th key={s.ticker}>{s.ticker}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr><td>Company</td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.company_name}</td>)}</tr>
+                          <tr><td>Price</td>{compareResult.stocks.map(s => <td key={s.ticker}>${s.current}</td>)}</tr>
+                          <tr><td><Term name="p/e ratio">P/E Ratio</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.pe_ratio ?? '--'}</td>)}</tr>
+                          <tr><td><Term name="market cap">Market Cap</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.market_cap}</td>)}</tr>
+                          <tr><td>Revenue</td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.revenue ?? '--'}</td>)}</tr>
+                          <tr><td>Profit Margin</td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.profit_margin !== null && s.profit_margin !== undefined ? `${s.profit_margin}%` : '--'}</td>)}</tr>
+                          <tr><td><Term name="beta">Beta</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.beta ?? '--'}</td>)}</tr>
+                          <tr><td><Term name="dividend yield">Dividend Yield</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.dividend_yield !== null && s.dividend_yield !== undefined ? `${s.dividend_yield}%` : '--'}</td>)}</tr>
+                          <tr><td>6mo Performance</td>{compareResult.stocks.map(s => <td key={s.ticker} className={s.perf_6mo >= 0 ? 'pos' : 'neg'}>{s.perf_6mo >= 0 ? '+' : ''}{s.perf_6mo}%</td>)}</tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="portfolio-analysis">
+                      <div className="portfolio-analysis-title">Which is Stronger?</div>
+                      <div className="portfolio-analysis-text">{compareResult.summary}</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {activeTab === 'picks' && (
               <div>
                 <div className="page-header">
@@ -1066,6 +1487,23 @@ function App() {
                 </div>
                 {topPicksUpdated && <div style={{fontSize:'11px', color:'#9c8e82', marginBottom:'12px'}}>Updated {topPicksUpdated}</div>}
 
+                <div className="screener-filters">
+                  <div className="screener-group">
+                    {SECTORS_LIST.map(s => (
+                      <button key={s} className={`filter-pill ${pickSectorFilter === s ? 'active' : ''}`} onClick={() => setPickSectorFilter(s)}>{s}</button>
+                    ))}
+                  </div>
+                  <div className="screener-group">
+                    <button className={`filter-pill ${pickTimeframeFilter === '7d' ? 'active' : ''}`} onClick={() => setPickTimeframeFilter('7d')}>1 Week</button>
+                    <button className={`filter-pill ${pickTimeframeFilter === '30d' ? 'active' : ''}`} onClick={() => setPickTimeframeFilter('30d')}>1 Month</button>
+                  </div>
+                  <div className="screener-group">
+                    {['All', 'Low', 'Medium', 'High'].map(r => (
+                      <button key={r} className={`filter-pill ${pickRiskFilter === r ? 'active' : ''}`} onClick={() => setPickRiskFilter(r)}>{r === 'All' ? 'Any Risk' : `${r} Risk`}</button>
+                    ))}
+                  </div>
+                </div>
+
                 {topPicks.length === 0 ? (
                   <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
                     <div style={{fontSize:'14px', color:'#6b5e52'}}>Scanning S&P 500...</div>
@@ -1073,9 +1511,13 @@ function App() {
                       <div style={{height:'100%', background:'#a4391c', borderRadius:'2px', animation:'loading-bar 2s ease-in-out infinite'}}></div>
                     </div>
                   </div>
+                ) : filteredPicks.length === 0 ? (
+                  <div className="signal-card" style={{textAlign:'center', padding:'40px'}}>
+                    <div style={{fontSize:'14px', color:'#6b5e52'}}>No picks match these filters right now — try widening your criteria.</div>
+                  </div>
                 ) : (
                   <div className="picks-grid">
-                    {topPicks.map((pick, i) => (
+                    {filteredPicks.map((pick, i) => (
                       <div key={i} className="pick-card" onClick={() => { setTicker(pick.ticker); setInput(pick.ticker); setActiveTab('overview'); }}>
                         <div className="pick-top-row">
                           <div className="pick-rank">#{i + 1}</div>
@@ -1109,6 +1551,12 @@ function App() {
                 <div className="portfolio-input">
                   <div className="portfolio-input-title">Portfolio Analyser</div>
                   <div className="portfolio-input-sub">Enter your holdings to get analysis of your portfolio</div>
+
+                  {portfolio.every(h => !h.ticker && !h.shares && !h.avg_cost) && (
+                    <div className="empty-state-tip">
+                      Add your first holding to get started. Not sure what to add? Check our <span onClick={() => setActiveTab('picks')}>Top Picks</span> tab for ideas.
+                    </div>
+                  )}
 
                   <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:'8px', marginBottom:'8px'}}>
                     <div style={{fontSize:'10px', fontWeight:'700', letterSpacing:'0.8px', color:'#9c8e82', textTransform:'uppercase', padding:'0 12px'}}>Ticker</div>
@@ -1194,7 +1642,7 @@ function App() {
                     <div className="portfolio-summary">
                       <div className="portfolio-stat">
                         <div className="portfolio-stat-label">Total Value</div>
-                        <div className="portfolio-stat-value">${portfolioResults.total_value.toLocaleString()}</div>
+                        <div className="portfolio-stat-value">$<CountUp value={portfolioResults.total_value} decimals={0} /></div>
                       </div>
                       <div className="portfolio-stat">
                         <div className="portfolio-stat-label">Positions</div>
@@ -1203,7 +1651,7 @@ function App() {
                       <div className="portfolio-stat">
                         <div className="portfolio-stat-label">Total P&L</div>
                         <div className={`portfolio-stat-value ${portfolioResults.positions.reduce((sum, p) => sum + p.pnl, 0) >= 0 ? 'pos' : 'neg'}`}>
-                          ${Math.round(portfolioResults.positions.reduce((sum, p) => sum + p.pnl, 0)).toLocaleString()}
+                          $<CountUp value={Math.round(portfolioResults.positions.reduce((sum, p) => sum + p.pnl, 0))} decimals={0} />
                         </div>
                       </div>
                       <div className="portfolio-stat">
@@ -1244,6 +1692,16 @@ function App() {
                         ))}
                       </tbody>
                     </table>
+
+                    <div className="card" style={{ marginBottom: '20px' }}>
+                      <div className="card-title">Sector Allocation</div>
+                      <PortfolioDonut sectors={portfolioResults.sectors} />
+                      {sectorCommentary.length > 0 && (
+                        <div className="donut-commentary">
+                          {sectorCommentary.map((line, i) => <p key={i}>{line}</p>)}
+                        </div>
+                      )}
+                    </div>
 
                     <div className="portfolio-analysis">
                       <div className="portfolio-analysis-title">Portfolio Analysis</div>
@@ -1368,7 +1826,7 @@ function App() {
                       <div className="signal-stat">
                         <div className="signal-stat-label">
                           Stop Loss
-                          <InfoTip text="The price at which you automatically sell to prevent bigger losses." />
+                          <InfoTip term="stop loss" />
                         </div>
                         <div className="signal-stat-value neg">${finderResult.stop_loss}</div>
                         <div className="signal-stat-sub">Max loss protection</div>
@@ -1421,6 +1879,75 @@ function App() {
                     <div style={{fontSize:'14px', color:'#c94545'}}>{finderResult.error}</div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'learn' && (
+              <div>
+                <div className="page-header">
+                  <h1>Learn</h1>
+                  <p>Plain-English investing education, from your first stock to advanced strategies. {learnProgress.length} of {LEARN_CURRICULUM.reduce((sum, s) => sum + s.topics.length, 0)} topics read ({Math.round(learnProgress.length / LEARN_CURRICULUM.reduce((sum, s) => sum + s.topics.length, 0) * 100)}%).</p>
+                  <div className="learn-progress-bar">
+                    <div className="learn-progress-fill" style={{ width: `${Math.round(learnProgress.length / LEARN_CURRICULUM.reduce((sum, s) => sum + s.topics.length, 0) * 100)}%` }}></div>
+                  </div>
+                </div>
+
+                {LEARN_CURRICULUM.map(section => (
+                  <div key={section.section} style={{ marginBottom: '24px' }}>
+                    <div className="learn-section-title">{section.section}</div>
+                    <div className="learn-topics">
+                      {section.topics.map(topic => {
+                        const isOpen = learnOpenTopic === topic.id;
+                        const isRead = learnProgress.includes(topic.id);
+                        return (
+                          <div key={topic.id} className={`learn-topic-card ${isOpen ? 'open' : ''}`}>
+                            <div className="learn-topic-header" onClick={() => setLearnOpenTopic(isOpen ? null : topic.id)}>
+                              <span>{topic.title}</span>
+                              <span className="learn-topic-meta">{isRead && <span className="learn-read-badge">✓ Read</span>}{isOpen ? '−' : '+'}</span>
+                            </div>
+                            {isOpen && (
+                              <div className="learn-topic-body">
+                                <p>{topic.explanation}</p>
+                                <div className="learn-example"><strong>Example:</strong> {topic.example}</div>
+                                <div className="learn-takeaway"><strong>Key takeaway:</strong> {topic.takeaway}</div>
+                                <div className="learn-topic-actions">
+                                  <button className="auth-btn primary" onClick={() => { markTopicRead(topic.id); setActiveTab(topic.tryItTab); }}>Try it on MacroLens →</button>
+                                  {!isRead && <button className="auth-btn" onClick={() => markTopicRead(topic.id)}>Mark as read</button>}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="card" style={{ marginBottom: '20px' }}>
+                  <div className="card-title">Glossary</div>
+                  <div className="glossary-grid">
+                    {Object.keys(GLOSSARY).map(term => (
+                      <Term key={term} name={term}>
+                        <span className="glossary-chip">{term}</span>
+                      </Term>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="card ask-card">
+                  <div className="card-title">Ask MacroLens Anything</div>
+                  <div className="ask-row">
+                    <input
+                      className="holding-input"
+                      placeholder="Ask anything about investing..."
+                      value={askQuestion}
+                      onChange={e => setAskQuestion(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAsk()}
+                    />
+                    <button className="auth-btn primary" onClick={handleAsk} disabled={askLoading}>{askLoading ? 'Thinking...' : 'Ask'}</button>
+                  </div>
+                  {askAnswer && <div className="ask-answer">{askAnswer}</div>}
+                </div>
               </div>
             )}
 
