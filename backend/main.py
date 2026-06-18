@@ -704,16 +704,26 @@ def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
     if cached:
         return cached
 
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="3mo")
-    info = stock.info
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="3mo")
+        info = stock.info or {}
+    except Exception as e:
+        print(f"yfinance error for {ticker}: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not fetch data for '{ticker.upper()}' right now. Please try again shortly.")
+
+    if hist is None or hist.empty:
+        raise HTTPException(status_code=404, detail=f"No price data found for '{ticker.upper()}'. Check the symbol and try again.")
 
     prices = hist["Close"].round(2).tolist()
+    if len(prices) == 0:
+        raise HTTPException(status_code=404, detail=f"No price data found for '{ticker.upper()}'. Check the symbol and try again.")
+
     current = prices[-1]
     company_name = info.get("shortName", ticker)
     sector = info.get("sector", "N/A")
-    fifty_two_high = info.get("fiftyTwoWeekHigh", current)
-    fifty_two_low = info.get("fiftyTwoWeekLow", current)
+    fifty_two_high = info.get("fiftyTwoWeekHigh") or current
+    fifty_two_low = info.get("fiftyTwoWeekLow") or current
     target_price = info.get("targetMeanPrice", None)
     recommendation = info.get("recommendationKey", "none")
     pe_ratio = info.get("trailingPE", None)
@@ -721,11 +731,11 @@ def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
 
     recent_7 = prices[-7:] if len(prices) >= 7 else prices
     recent_30 = prices[-30:] if len(prices) >= 30 else prices
-    momentum_7d = round((recent_7[-1] - recent_7[0]) / recent_7[0] * 100, 2)
-    momentum_30d = round((recent_30[-1] - recent_30[0]) / recent_30[0] * 100, 2)
-    volatility = round((max(recent_30) - min(recent_30)) / min(recent_30) * 100, 2)
-    distance_from_52h = round((current - fifty_two_high) / fifty_two_high * 100, 2)
-    distance_from_52l = round((current - fifty_two_low) / fifty_two_low * 100, 2)
+    momentum_7d = round((recent_7[-1] - recent_7[0]) / recent_7[0] * 100, 2) if recent_7[0] else 0
+    momentum_30d = round((recent_30[-1] - recent_30[0]) / recent_30[0] * 100, 2) if recent_30[0] else 0
+    volatility = round((max(recent_30) - min(recent_30)) / min(recent_30) * 100, 2) if min(recent_30) else 0
+    distance_from_52h = round((current - fifty_two_high) / fifty_two_high * 100, 2) if fifty_two_high else 0
+    distance_from_52l = round((current - fifty_two_low) / fifty_two_low * 100, 2) if fifty_two_low else 0
 
     past_accuracy = ""
     try:
@@ -915,10 +925,27 @@ def get_stock(ticker: str, range: str = "1mo"):
     }
 
     period, interval = range_map.get(range, ("1mo", "1d"))
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period=period, interval=interval, prepost=True)
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=period, interval=interval, prepost=True)
+    except Exception as e:
+        print(f"yfinance error for {ticker}: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not fetch data for '{ticker.upper()}' right now. Please try again shortly.")
+
+    if hist is None or hist.empty:
+        # Some intraday ranges (1d/1w) return nothing outside market hours for
+        # certain symbols — fall back to a daily candle so the page still works.
+        try:
+            hist = stock.history(period="1mo", interval="1d", prepost=True)
+        except Exception:
+            hist = None
+        if hist is None or hist.empty:
+            raise HTTPException(status_code=404, detail=f"No price data found for '{ticker.upper()}'. Check the symbol and try again.")
 
     prices = hist["Close"].round(2).tolist()
+
+    if len(prices) == 0:
+        raise HTTPException(status_code=404, detail=f"No price data found for '{ticker.upper()}'. Check the symbol and try again.")
 
     if range == "1d":
         dates = hist.index.strftime("%H:%M").tolist()
@@ -928,9 +955,9 @@ def get_stock(ticker: str, range: str = "1mo"):
         dates = hist.index.strftime("%b %d").tolist()
 
     current = prices[-1]
-    previous = prices[-2]
+    previous = prices[-2] if len(prices) >= 2 else current
     change = round(current - previous, 2)
-    change_pct = round((change / previous) * 100, 2)
+    change_pct = round((change / previous) * 100, 2) if previous else 0
 
     recent = prices[-7:] if len(prices) >= 7 else prices
     avg_daily_change = (recent[-1] - recent[0]) / len(recent)
@@ -947,9 +974,13 @@ def get_stock(ticker: str, range: str = "1mo"):
     pred_low = [round(p - band, 2) for p in pred_mid]
 
     direction = "upward" if avg_daily_change > 0 else "downward"
-    pct_predicted = round((pred_mid[-1] - current) / current * 100, 2)
+    pct_predicted = round((pred_mid[-1] - current) / current * 100, 2) if current else 0
 
-    info = stock.info
+    try:
+        info = stock.info or {}
+    except Exception as e:
+        print(f"yfinance info error for {ticker}: {e}")
+        info = {}
     sector = info.get("sector", "N/A")
     company_name = info.get("shortName", ticker)
     recommendation = info.get("recommendationKey", "none").capitalize()

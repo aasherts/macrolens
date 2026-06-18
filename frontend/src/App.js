@@ -106,6 +106,76 @@ function loadLearnProgress() {
   }
 }
 
+function loadRecentTickers() {
+  try {
+    return JSON.parse(localStorage.getItem('ml_recent_tickers') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentTicker(ticker) {
+  const existing = loadRecentTickers().filter(t => t !== ticker);
+  const updated = [ticker, ...existing].slice(0, 6);
+  try { localStorage.setItem('ml_recent_tickers', JSON.stringify(updated)); } catch {}
+  return updated;
+}
+
+// Defined outside App so it keeps a stable component identity across
+// re-renders — otherwise React remounts the <input> on every keystroke
+// (recreating it inside App's render would change its identity each time)
+// and the field loses focus after a single character.
+function SearchBox({ className, value, onChange, onBlur, showDropdown, searchResults, onSelect }) {
+  const [highlight, setHighlight] = useState(-1);
+
+  useEffect(() => { setHighlight(-1); }, [searchResults]);
+
+  const handleKeyDown = (e) => {
+    if (!showDropdown || searchResults.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight(h => (h + 1) % searchResults.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight(h => (h <= 0 ? searchResults.length - 1 : h - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const pick = searchResults[highlight] || searchResults[0];
+      if (pick) onSelect(pick.symbol);
+    } else if (e.key === 'Escape') {
+      e.currentTarget.blur();
+    }
+  };
+
+  return (
+    <div className={className} style={{ position: 'relative' }}>
+      <input
+        placeholder="Search any stock, ETF, or index..."
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        onKeyDown={handleKeyDown}
+      />
+      {showDropdown && searchResults.length > 0 && (
+        <div className="dropdown">
+          {searchResults.map((r, i) => (
+            <div
+              key={i}
+              className={`dropdown-item ${i === highlight ? 'highlighted' : ''}`}
+              onMouseDown={() => onSelect(r.symbol)}
+              onMouseEnter={() => setHighlight(i)}
+            >
+              <span className="dropdown-symbol">{r.symbol}</span>
+              <span className="dropdown-name">{r.name}</span>
+              <span className="dropdown-type">{r.type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [backendSlow, setBackendSlow] = useState(false);
@@ -113,6 +183,8 @@ function App() {
   const [input, setInput] = useState('AAPL');
   const debouncedInput = useDebounce(input, 300);
   const [stockData, setStockData] = useState(() => cacheGet(`ml_stock_AAPL_1mo`)?.data || null);
+  const [stockError, setStockError] = useState(null);
+  const [recentTickers, setRecentTickers] = useState(loadRecentTickers);
   const [signalData, setSignalData] = useState(null);
   const [signalLoading, setSignalLoading] = useState(false);
   const [range, setRange] = useState('1mo');
@@ -195,21 +267,43 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const fetchStock = (tkr, rng, isRetry) => {
+    const cached = cacheGet(`ml_stock_${tkr}_${rng}`);
+    if (!isRetry) {
+      if (cached) setStockData(cached.data);
+      else setStockData(null);
+    }
+    setStockError(null);
+    fetch(`${API_URL}/stock/${tkr}?range=${rng}`)
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.detail || `Couldn't load data for ${tkr.toUpperCase()}.`);
+        }
+        return data;
+      })
+      .then(data => {
+        setStockData(data);
+        setStockError(null);
+        cacheSet(`ml_stock_${tkr}_${rng}`, data);
+      })
+      .catch(err => {
+        if (!cached) setStockData(null);
+        setStockError(err.message || `Couldn't load data for ${tkr.toUpperCase()}.`);
+      });
+  };
+
   useEffect(() => {
-    const cached = cacheGet(`ml_stock_${ticker}_${range}`);
-    if (cached) setStockData(cached.data);
-    else setStockData(null);
     setSignalData(null);
     setHoverPrice(null);
     setHoverTime(null);
-    fetch(`${API_URL}/stock/${ticker}?range=${range}`)
-      .then(res => res.json())
-      .then(data => {
-        setStockData(data);
-        cacheSet(`ml_stock_${ticker}_${range}`, data);
-      })
-      .catch(() => {});
+    setNewsData([]);
+    setRecentTickers(pushRecentTicker(ticker.toUpperCase()));
+    fetchStock(ticker, range, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, range]);
+
+  const retryStock = () => fetchStock(ticker, range, true);
 
   useEffect(() => {
     fetch(`${API_URL}/macro`)
@@ -741,27 +835,8 @@ function App() {
   const isSaved = !!(stockData && userWatchlist.some(w => w.ticker === ticker.toUpperCase()));
   const macroEvents = useMemo(() => getUpcomingMacroEvents(), []);
 
-  const SearchInput = ({ className }) => (
-    <div className={className} style={{ position: 'relative' }}>
-      <input
-        placeholder="Search any stock, ETF, or index..."
-        value={input}
-        onChange={handleInput}
-        onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-      />
-      {showDropdown && searchResults.length > 0 && (
-        <div className="dropdown">
-          {searchResults.map((r, i) => (
-            <div key={i} className="dropdown-item" onMouseDown={() => { handleSelect(r.symbol); setMobileSearchOpen(false); }}>
-              <span className="dropdown-symbol">{r.symbol}</span>
-              <span className="dropdown-name">{r.name}</span>
-              <span className="dropdown-type">{r.type}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const handleSearchBlur = () => setTimeout(() => setShowDropdown(false), 150);
+  const handleSearchSelect = (symbol) => { handleSelect(symbol); setMobileSearchOpen(false); };
 
   return (
     <div className="app">
@@ -833,6 +908,19 @@ function App() {
             )}
           </div>
 
+          {recentTickers.length > 0 && (
+            <>
+              <div className="sidebar-section-label">Recently Viewed</div>
+              <div className="sidebar-recent">
+                {recentTickers.map(t => (
+                  <button key={t} className={`recent-chip ${t === ticker.toUpperCase() ? 'active' : ''}`} onClick={() => { setTicker(t); setInput(t); setActiveTab('overview'); }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {user ? (
             <div className="sidebar-account">
               <div className="sidebar-account-avatar">{user.username[0].toUpperCase()}</div>
@@ -855,7 +943,15 @@ function App() {
           <div className="topbar">
             <div className="topbar-title">{PAGE_TITLES[activeTab]}</div>
             <div className="topbar-search-wrap">
-              <SearchInput className="topbar-search" />
+              <SearchBox
+                className="topbar-search"
+                value={input}
+                onChange={handleInput}
+                onBlur={handleSearchBlur}
+                showDropdown={showDropdown}
+                searchResults={searchResults}
+                onSelect={handleSearchSelect}
+              />
             </div>
             <div className="topbar-right">
               <button className="mobile-search-toggle" onClick={() => setMobileSearchOpen(prev => !prev)}>
@@ -895,7 +991,15 @@ function App() {
 
           {mobileSearchOpen && (
             <div className="mobile-search-bar">
-              <SearchInput className="" />
+              <SearchBox
+                className=""
+                value={input}
+                onChange={handleInput}
+                onBlur={handleSearchBlur}
+                showDropdown={showDropdown}
+                searchResults={searchResults}
+                onSelect={handleSearchSelect}
+              />
             </div>
           )}
 
@@ -995,7 +1099,13 @@ function App() {
                       )}
                     </div>
 
-                    {!stockData ? (
+                    {stockError && !stockData ? (
+                      <div className="stock-error-state">
+                        <div className="stock-error-title">Couldn't load {ticker.toUpperCase()}</div>
+                        <div className="stock-error-detail">{stockError}</div>
+                        <button className="auth-btn primary" onClick={retryStock}>Try again</button>
+                      </div>
+                    ) : !stockData ? (
                       <div className="skeleton-text-block" style={{marginTop: '14px'}}>
                         <div className="skeleton skeleton-line" style={{height: '48px', width: '40%'}}></div>
                         <div className="skeleton skeleton-line" style={{width: '30%'}}></div>
@@ -1073,6 +1183,8 @@ function App() {
                         <Suspense fallback={<div className="skeleton skeleton-chart"></div>}>
                           <PriceChart ref={chartRef} data={priceData} options={chartOptions} />
                         </Suspense>
+                      ) : stockError ? (
+                        <div className="loading">No chart data available for {ticker.toUpperCase()}.</div>
                       ) : (
                         <div className="skeleton skeleton-chart"></div>
                       )}
@@ -1094,6 +1206,8 @@ function App() {
                             <span>{line.replace(/^[•\-*]\s*/, '').replace(/\*\*/g, '')}</span>
                           </div>
                         ))
+                      ) : stockError ? (
+                        <p style={{color: 'var(--text-faint)', fontSize: '13px'}}>No analysis available — try another ticker or check the symbol.</p>
                       ) : (
                         <div className="skeleton-text-block">
                           <div className="skeleton skeleton-line" style={{width:'100%'}}></div>
@@ -1221,7 +1335,9 @@ function App() {
                           <div className="news-meta">{article.source} · {article.publishedAt}</div>
                         </a>
                       </div>
-                    )) : (
+                    )) : stockError ? (
+                      <p style={{color: 'var(--text-faint)', fontSize: '13px'}}>No news available.</p>
+                    ) : (
                       <div className="skeleton-text-block">
                         <div className="skeleton skeleton-line" style={{width:'100%'}}></div>
                         <div className="skeleton skeleton-line" style={{width:'60%'}}></div>
