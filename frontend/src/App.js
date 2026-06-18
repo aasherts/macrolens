@@ -131,6 +131,31 @@ function pushRecentTicker(ticker) {
   return updated;
 }
 
+function loadPortfolio() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('ml_portfolio_holdings') || 'null');
+    if (saved && Array.isArray(saved) && saved.length > 0) return saved;
+  } catch {}
+  return [{ ticker: '', shares: '', avg_cost: '' }];
+}
+
+// Returns the index of the stock with the highest ('max') or lowest
+// ('min') value for a given metric key, ignoring nulls — used to
+// neutrally highlight extremes in the Compare table.
+function highlightExtreme(stocks, key, mode) {
+  let bestIdx = -1;
+  let bestVal = null;
+  stocks.forEach((s, i) => {
+    const v = s[key];
+    if (v === null || v === undefined) return;
+    if (bestVal === null || (mode === 'max' ? v > bestVal : v < bestVal)) {
+      bestVal = v;
+      bestIdx = i;
+    }
+  });
+  return bestIdx;
+}
+
 // Defined outside App so it keeps a stable component identity across
 // re-renders — otherwise React remounts the <input> on every keystroke
 // (recreating it inside App's render would change its identity each time)
@@ -240,7 +265,7 @@ function App() {
   const [pickSectorFilter, setPickSectorFilter] = useState('All');
   const [pickTimeframeFilter, setPickTimeframeFilter] = useState('7d');
   const [pickRiskFilter, setPickRiskFilter] = useState('All');
-  const [portfolio, setPortfolio] = useState([{ ticker: '', shares: '', avg_cost: '' }]);
+  const [portfolio, setPortfolio] = useState(loadPortfolio);
   const [portfolioResults, setPortfolioResults] = useState(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [movers, setMovers] = useState({ gainers: [], losers: [] });
@@ -254,7 +279,7 @@ function App() {
   const [askAnswer, setAskAnswer] = useState('');
   const [askLoading, setAskLoading] = useState(false);
   const [alerts, setAlerts] = useState(loadAlerts);
-  const [alertBanner, setAlertBanner] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const [showAlertPanel, setShowAlertPanel] = useState(false);
   const [alertTargetPrice, setAlertTargetPrice] = useState('');
   const [alertDirection, setAlertDirection] = useState('above');
@@ -318,6 +343,10 @@ function App() {
   }, [ticker, range]);
 
   const retryStock = () => fetchStock(ticker, range, true);
+
+  useEffect(() => {
+    try { localStorage.setItem('ml_portfolio_holdings', JSON.stringify(portfolio)); } catch {}
+  }, [portfolio]);
 
   useEffect(() => {
     fetch(`${API_URL}/macro`)
@@ -445,6 +474,14 @@ function App() {
     }
   }, [activeTab]);
 
+  const pushToast = (message) => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 8000);
+  };
+
+  const dismissToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+
   // ---------- Price alerts: check against latest stock data ----------
   useEffect(() => {
     if (!stockData) return;
@@ -455,7 +492,7 @@ function App() {
       const hit = a.direction === 'above' ? stockData.current >= a.target : stockData.current <= a.target;
       if (hit) {
         changed = true;
-        setAlertBanner(`${a.ticker} is now ${a.direction === 'above' ? 'above' : 'below'} $${a.target} (currently $${stockData.current})`);
+        pushToast(`🔔 ${a.ticker} is now ${a.direction === 'above' ? 'above' : 'below'} $${a.target} (currently $${stockData.current})`);
       } else {
         remaining.push(a);
       }
@@ -891,10 +928,14 @@ function App() {
         <Onboarding onComplete={completeOnboarding} onAnalyse={onboardingAnalyse} />
       )}
 
-      {alertBanner && (
-        <div className="alert-banner">
-          🔔 {alertBanner}
-          <button onClick={() => setAlertBanner(null)}>✕</button>
+      {toasts.length > 0 && (
+        <div className="toast-stack">
+          {toasts.map(t => (
+            <div key={t.id} className="toast">
+              <span>{t.message}</span>
+              <button onClick={() => dismissToast(t.id)}>✕</button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1611,15 +1652,16 @@ function App() {
                         <tbody>
                           <tr><td>Company</td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.company_name}</td>)}</tr>
                           <tr><td>Price</td>{compareResult.stocks.map(s => <td key={s.ticker}>${s.current}</td>)}</tr>
-                          <tr><td><Term name="p/e ratio">P/E Ratio</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.pe_ratio ?? '--'}</td>)}</tr>
+                          <tr><td><Term name="p/e ratio">P/E Ratio</Term></td>{compareResult.stocks.map((s, i) => <td key={s.ticker} className={highlightExtreme(compareResult.stocks, 'pe_ratio', 'min') === i ? 'cmp-highlight' : ''}>{s.pe_ratio ?? '--'}</td>)}</tr>
                           <tr><td><Term name="market cap">Market Cap</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.market_cap}</td>)}</tr>
                           <tr><td>Revenue</td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.revenue ?? '--'}</td>)}</tr>
-                          <tr><td>Profit Margin</td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.profit_margin !== null && s.profit_margin !== undefined ? `${s.profit_margin}%` : '--'}</td>)}</tr>
-                          <tr><td><Term name="beta">Beta</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.beta ?? '--'}</td>)}</tr>
-                          <tr><td><Term name="dividend yield">Dividend Yield</Term></td>{compareResult.stocks.map(s => <td key={s.ticker}>{s.dividend_yield !== null && s.dividend_yield !== undefined ? `${s.dividend_yield}%` : '--'}</td>)}</tr>
-                          <tr><td>6mo Performance</td>{compareResult.stocks.map(s => <td key={s.ticker} className={s.perf_6mo >= 0 ? 'pos' : 'neg'}>{s.perf_6mo >= 0 ? '+' : ''}{s.perf_6mo}%</td>)}</tr>
+                          <tr><td>Profit Margin</td>{compareResult.stocks.map((s, i) => <td key={s.ticker} className={highlightExtreme(compareResult.stocks, 'profit_margin', 'max') === i ? 'cmp-highlight' : ''}>{s.profit_margin !== null && s.profit_margin !== undefined ? `${s.profit_margin}%` : '--'}</td>)}</tr>
+                          <tr><td><Term name="beta">Beta</Term></td>{compareResult.stocks.map((s, i) => <td key={s.ticker} className={highlightExtreme(compareResult.stocks, 'beta', 'min') === i ? 'cmp-highlight' : ''}>{s.beta ?? '--'}</td>)}</tr>
+                          <tr><td><Term name="dividend yield">Dividend Yield</Term></td>{compareResult.stocks.map((s, i) => <td key={s.ticker} className={highlightExtreme(compareResult.stocks, 'dividend_yield', 'max') === i ? 'cmp-highlight' : ''}>{s.dividend_yield !== null && s.dividend_yield !== undefined ? `${s.dividend_yield}%` : '--'}</td>)}</tr>
+                          <tr><td>6mo Performance</td>{compareResult.stocks.map((s, i) => <td key={s.ticker} className={`${s.perf_6mo >= 0 ? 'pos' : 'neg'} ${highlightExtreme(compareResult.stocks, 'perf_6mo', 'max') === i ? 'cmp-highlight' : ''}`}>{s.perf_6mo >= 0 ? '+' : ''}{s.perf_6mo}%</td>)}</tr>
                         </tbody>
                       </table>
+                      <div className="cmp-legend">Highlighted = highest/lowest in the group — not automatically "better" (e.g. low P/E can mean cheap, or it can mean the market sees trouble; depends on your strategy).</div>
                     </div>
 
                     <div className="portfolio-analysis">
@@ -2073,90 +2115,147 @@ function App() {
               <div>
                 <div className="page-header">
                   <h1>Track Record</h1>
-                  <p>Full transparency on how this works: every 7-day price forecast MacroLens makes is logged, then automatically checked against what actually happened. Nothing is hidden — including the misses. That history is also fed back in to nudge future forecasts (see the methodology note below).</p>
+                  <p>Full transparency on how this works: every 7-day price forecast and every BUY/SELL/HOLD signal MacroLens makes is logged, then automatically checked against what actually happened. Nothing is hidden — including the misses. That history is fed back in to calibrate future forecasts (see the methodology note below).</p>
                 </div>
 
                 {trackRecordLoading && !trackRecord ? (
                   <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
                     <div style={{fontSize:'14px', color:'#6b5e52'}}>Loading track record...</div>
                   </div>
-                ) : trackRecord && trackRecord.stats.total_resolved === 0 ? (
-                  <div className="signal-card" style={{textAlign:'center', padding:'40px'}}>
-                    <div style={{fontSize:'14px', color:'#6b5e52'}}>No predictions have been resolved yet — check back in a few days. {trackRecord.stats.pending} prediction{trackRecord.stats.pending === 1 ? '' : 's'} currently pending.</div>
-                  </div>
                 ) : trackRecord ? (
                   <>
-                    <div className="portfolio-summary" style={{ marginBottom: '20px' }}>
-                      <div className="portfolio-stat">
-                        <div className="portfolio-stat-label">Resolved Predictions</div>
-                        <div className="portfolio-stat-value"><CountUp value={trackRecord.stats.total_resolved} decimals={0} /></div>
+                    <div className="learn-section-title">Price Predictions</div>
+                    {trackRecord.predictions.stats.total_resolved === 0 ? (
+                      <div className="signal-card" style={{textAlign:'center', padding:'30px', marginBottom: '20px'}}>
+                        <div style={{fontSize:'14px', color:'#6b5e52'}}>No predictions have been resolved yet — check back in a few days. {trackRecord.predictions.stats.pending} prediction{trackRecord.predictions.stats.pending === 1 ? '' : 's'} currently pending.</div>
                       </div>
-                      <div className="portfolio-stat">
-                        <div className="portfolio-stat-label">Correct Direction</div>
-                        <div className="portfolio-stat-value pos"><CountUp value={trackRecord.stats.correct_direction_pct} decimals={1} suffix="%" /></div>
-                      </div>
-                      <div className="portfolio-stat">
-                        <div className="portfolio-stat-label">Avg Error</div>
-                        <div className="portfolio-stat-value">±<CountUp value={trackRecord.stats.avg_error_pct} decimals={2} />%</div>
-                      </div>
-                      <div className="portfolio-stat">
-                        <div className="portfolio-stat-label">Still Pending</div>
-                        <div className="portfolio-stat-value">{trackRecord.stats.pending}</div>
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="portfolio-summary" style={{ marginBottom: '20px' }}>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Resolved Predictions</div>
+                            <div className="portfolio-stat-value"><CountUp value={trackRecord.predictions.stats.total_resolved} decimals={0} /></div>
+                          </div>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Correct Direction</div>
+                            <div className="portfolio-stat-value pos"><CountUp value={trackRecord.predictions.stats.correct_direction_pct} decimals={1} suffix="%" /></div>
+                          </div>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Avg Error</div>
+                            <div className="portfolio-stat-value">±<CountUp value={trackRecord.predictions.stats.avg_error_pct} decimals={2} />%</div>
+                          </div>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Still Pending</div>
+                            <div className="portfolio-stat-value">{trackRecord.predictions.stats.pending}</div>
+                          </div>
+                        </div>
 
-                    <div className="card" style={{ marginBottom: '20px' }}>
-                      <div className="card-title">Outcome Breakdown</div>
-                      <div className="outcome-bars">
-                        {['excellent', 'good', 'correct_direction', 'wrong_direction'].map(key => {
-                          const count = trackRecord.stats.breakdown[key] || 0;
-                          const pct = trackRecord.stats.total_resolved ? (count / trackRecord.stats.total_resolved * 100) : 0;
-                          const labels = { excellent: 'Excellent (< 1% off)', good: 'Good (< 3% off)', correct_direction: 'Right direction', wrong_direction: 'Wrong direction' };
-                          return (
-                            <div key={key} className="outcome-row">
-                              <span className="outcome-label">{labels[key]}</span>
-                              <div className="outcome-bar-track">
-                                <div className={`outcome-bar-fill ${key === 'wrong_direction' ? 'neg' : 'pos'}`} style={{ width: `${pct}%` }}></div>
-                              </div>
-                              <span className="outcome-count">{count}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                        <div className="card" style={{ marginBottom: '20px' }}>
+                          <div className="card-title">Outcome Breakdown</div>
+                          <div className="outcome-bars">
+                            {['excellent', 'good', 'correct_direction', 'wrong_direction'].map(key => {
+                              const count = trackRecord.predictions.stats.breakdown[key] || 0;
+                              const pct = trackRecord.predictions.stats.total_resolved ? (count / trackRecord.predictions.stats.total_resolved * 100) : 0;
+                              const labels = { excellent: 'Excellent (< 1% off)', good: 'Good (< 3% off)', correct_direction: 'Right direction', wrong_direction: 'Wrong direction' };
+                              return (
+                                <div key={key} className="outcome-row">
+                                  <span className="outcome-label">{labels[key]}</span>
+                                  <div className="outcome-bar-track">
+                                    <div className={`outcome-bar-fill ${key === 'wrong_direction' ? 'neg' : 'pos'}`} style={{ width: `${pct}%` }}></div>
+                                  </div>
+                                  <span className="outcome-count">{count}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
 
-                    <div className="card" style={{ marginBottom: '20px', overflowX: 'auto' }}>
-                      <div className="card-title">Recent Resolved Predictions</div>
-                      <table className="portfolio-table">
-                        <thead>
-                          <tr>
-                            <th>Ticker</th>
-                            <th>Predicted</th>
-                            <th>Actual</th>
-                            <th>Outcome</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {trackRecord.recent.map((p, i) => (
-                            <tr key={i} onClick={() => { setTicker(p.ticker); setInput(p.ticker); setActiveTab('overview'); }}>
-                              <td>{p.ticker}</td>
-                              <td className={p.predicted_pct >= 0 ? 'pos' : 'neg'}>{p.predicted_pct >= 0 ? '+' : ''}{p.predicted_pct}%</td>
-                              <td className={p.actual_pct >= 0 ? 'pos' : 'neg'}>{p.actual_pct >= 0 ? '+' : ''}{p.actual_pct}%</td>
-                              <td>
-                                <span className={`outcome-pill ${p.outcome === 'wrong_direction' ? 'neg' : 'pos'}`}>{p.outcome?.replace('_', ' ')}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        <div className="card" style={{ marginBottom: '28px', overflowX: 'auto' }}>
+                          <div className="card-title">Recent Resolved Predictions</div>
+                          <table className="portfolio-table">
+                            <thead>
+                              <tr>
+                                <th>Ticker</th>
+                                <th>Predicted</th>
+                                <th>Actual</th>
+                                <th>Outcome</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {trackRecord.predictions.recent.map((p, i) => (
+                                <tr key={i} onClick={() => { setTicker(p.ticker); setInput(p.ticker); setActiveTab('overview'); }}>
+                                  <td>{p.ticker}</td>
+                                  <td className={p.predicted_pct >= 0 ? 'pos' : 'neg'}>{p.predicted_pct >= 0 ? '+' : ''}{p.predicted_pct}%</td>
+                                  <td className={p.actual_pct >= 0 ? 'pos' : 'neg'}>{p.actual_pct >= 0 ? '+' : ''}{p.actual_pct}%</td>
+                                  <td>
+                                    <span className={`outcome-pill ${p.outcome === 'wrong_direction' ? 'neg' : 'pos'}`}>{p.outcome?.replace('_', ' ')}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="learn-section-title">Investment Signals</div>
+                    {trackRecord.signals.stats.total_resolved === 0 ? (
+                      <div className="signal-card" style={{textAlign:'center', padding:'30px', marginBottom: '20px'}}>
+                        <div style={{fontSize:'14px', color:'#6b5e52'}}>No signals have been resolved yet — check back in a few weeks. {trackRecord.signals.stats.pending} signal{trackRecord.signals.stats.pending === 1 ? '' : 's'} currently pending.</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="portfolio-summary" style={{ marginBottom: '20px' }}>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Resolved Signals</div>
+                            <div className="portfolio-stat-value"><CountUp value={trackRecord.signals.stats.total_resolved} decimals={0} /></div>
+                          </div>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Played Out As Expected</div>
+                            <div className="portfolio-stat-value pos"><CountUp value={trackRecord.signals.stats.correct_pct} decimals={1} suffix="%" /></div>
+                          </div>
+                          <div className="portfolio-stat">
+                            <div className="portfolio-stat-label">Still Pending</div>
+                            <div className="portfolio-stat-value">{trackRecord.signals.stats.pending}</div>
+                          </div>
+                        </div>
+
+                        <div className="card" style={{ marginBottom: '20px', overflowX: 'auto' }}>
+                          <div className="card-title">Recent Resolved Signals</div>
+                          <table className="portfolio-table">
+                            <thead>
+                              <tr>
+                                <th>Ticker</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                                <th>Actual Move</th>
+                                <th>Outcome</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {trackRecord.signals.recent.map((s, i) => (
+                                <tr key={i} onClick={() => { setTicker(s.ticker); setInput(s.ticker); setActiveTab('overview'); }}>
+                                  <td>{s.ticker}</td>
+                                  <td>{s.signal}</td>
+                                  <td>{s.confidence !== null ? `${s.confidence}%` : '--'}</td>
+                                  <td className={s.actual_pct >= 0 ? 'pos' : 'neg'}>{s.actual_pct >= 0 ? '+' : ''}{s.actual_pct}%</td>
+                                  <td>
+                                    <span className={`outcome-pill ${s.outcome === 'wrong' ? 'neg' : 'pos'}`}>{s.outcome}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
                   </>
                 ) : null}
 
                 <div className="card">
                   <div className="card-title">How the self-calibration works</div>
                   <p style={{ fontSize: '13px', color: 'var(--text-dim)', lineHeight: '1.7' }}>
-                    Every time you view a stock's Overview, MacroLens logs its 7-day price forecast. Roughly 7 days later, a background job checks that forecast against the real price and records whether it was right. The next time anyone requests a forecast for that ticker (or, with too little history, the site overall), MacroLens looks at the average error from the last 20 resolved predictions and nudges the new forecast to correct for any consistent bias — for example, if it's been under-predicting moves by 2 points on average, the next forecast shifts to account for that. This is a simple calibration filter, not a trained machine-learning model — it won't catch everything, but it does mean the numbers really do adjust based on what actually happened, not just sit static.
+                    Every time you view a stock's Overview, MacroLens logs its 7-day price forecast; every time you view a Signal, it logs the BUY/SELL/HOLD call. A background job checks both against what actually happened once their window closes. For price forecasts, MacroLens looks at the average error from the last 20 resolved predictions for that ticker (or site-wide if there isn't enough history yet) and nudges the new forecast to correct for any consistent bias. For signals, the AI is told how often its past calls for that ticker played out as expected, so it can factor that into its confidence. This is a simple calibration filter, not a trained machine-learning model — it won't catch everything, but the numbers genuinely adjust based on what actually happened, not just sit static.
                   </p>
                 </div>
               </div>

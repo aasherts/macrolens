@@ -24,7 +24,7 @@ class LoginRequest(BaseModel):
 class WatchlistRequest(BaseModel):
     ticker: str
     company_name: str = ""
-from database import init_db, get_db, Prediction, User, WatchlistItem
+from database import init_db, get_db, Prediction, User, WatchlistItem, SignalRecord
 from dotenv import load_dotenv
 from database import init_db, get_db, Prediction
 
@@ -303,17 +303,21 @@ def _background_screen():
 threading.Thread(target=_background_screen, daemon=True).start()
 
 def _background_checker():
-    """Resolves past predictions against actual outcomes so the
-    self-calibration logic in get_stock() has real data to learn from.
-    Runs once shortly after startup, then every 6 hours."""
+    """Resolves past predictions and signals against actual outcomes so
+    the self-calibration logic in get_stock()/get_signal() has real data
+    to learn from. Runs once shortly after startup, then every 6 hours."""
     import time
-    from checker import check_predictions
+    from checker import check_predictions, check_signals
     time.sleep(60)
     while True:
         try:
             check_predictions()
         except Exception as e:
             print(f"Prediction checker error: {e}")
+        try:
+            check_signals()
+        except Exception as e:
+            print(f"Signal checker error: {e}")
         time.sleep(21600)
 
 threading.Thread(target=_background_checker, daemon=True).start()
@@ -795,16 +799,17 @@ def get_predictions():
 
 @app.get("/track-record")
 def get_track_record():
-    """Public transparency view of every prediction MacroLens has made
-    and how it actually turned out — including the misses. This is the
-    same data that drives the self-calibration in get_stock()."""
+    """Public transparency view of every prediction and signal MacroLens
+    has made and how it actually turned out — including the misses. This
+    is the same data that drives the self-calibration in get_stock() and
+    get_signal()."""
     db = get_db()
     resolved = db.query(Prediction).filter(Prediction.outcome != None).order_by(Prediction.predicted_at.desc()).all()
     pending = db.query(Prediction).filter(Prediction.outcome == None).count()
 
     total = len(resolved)
     if total == 0:
-        return {
+        prediction_block = {
             "stats": {
                 "total_resolved": 0,
                 "pending": pending,
@@ -814,34 +819,74 @@ def get_track_record():
             },
             "recent": [],
         }
+    else:
+        correct_direction = sum(1 for p in resolved if p.outcome in ("excellent", "good", "correct_direction"))
+        breakdown = {}
+        for p in resolved:
+            breakdown[p.outcome] = breakdown.get(p.outcome, 0) + 1
+        avg_error = sum(p.error_pct for p in resolved if p.error_pct is not None) / total
+        recent = resolved[:30]
 
-    correct_direction = sum(1 for p in resolved if p.outcome in ("excellent", "good", "correct_direction"))
-    breakdown = {}
-    for p in resolved:
-        breakdown[p.outcome] = breakdown.get(p.outcome, 0) + 1
-    avg_error = sum(p.error_pct for p in resolved if p.error_pct is not None) / total
+        prediction_block = {
+            "stats": {
+                "total_resolved": total,
+                "pending": pending,
+                "correct_direction_pct": round(correct_direction / total * 100, 1),
+                "avg_error_pct": round(avg_error, 2),
+                "breakdown": breakdown,
+            },
+            "recent": [{
+                "ticker": p.ticker,
+                "company_name": p.company_name,
+                "predicted_at": str(p.predicted_at),
+                "predicted_pct": p.predicted_pct,
+                "predicted_direction": p.predicted_direction,
+                "actual_pct": p.actual_pct,
+                "outcome": p.outcome,
+                "error_pct": p.error_pct,
+            } for p in recent],
+        }
 
-    recent = resolved[:30]
+    sig_resolved = db.query(SignalRecord).filter(SignalRecord.outcome != None).order_by(SignalRecord.predicted_at.desc()).all()
+    sig_pending = db.query(SignalRecord).filter(SignalRecord.outcome == None).count()
+    sig_total = len(sig_resolved)
 
-    return {
-        "stats": {
-            "total_resolved": total,
-            "pending": pending,
-            "correct_direction_pct": round(correct_direction / total * 100, 1),
-            "avg_error_pct": round(avg_error, 2),
-            "breakdown": breakdown,
-        },
-        "recent": [{
-            "ticker": p.ticker,
-            "company_name": p.company_name,
-            "predicted_at": str(p.predicted_at),
-            "predicted_pct": p.predicted_pct,
-            "predicted_direction": p.predicted_direction,
-            "actual_pct": p.actual_pct,
-            "outcome": p.outcome,
-            "error_pct": p.error_pct,
-        } for p in recent],
-    }
+    if sig_total == 0:
+        signal_block = {
+            "stats": {
+                "total_resolved": 0,
+                "pending": sig_pending,
+                "correct_pct": None,
+                "breakdown_by_signal": {},
+            },
+            "recent": [],
+        }
+    else:
+        sig_correct = sum(1 for s in sig_resolved if s.outcome == "correct")
+        breakdown_by_signal = {}
+        for s in sig_resolved:
+            breakdown_by_signal.setdefault(s.signal, {"correct": 0, "wrong": 0})
+            breakdown_by_signal[s.signal][s.outcome] = breakdown_by_signal[s.signal].get(s.outcome, 0) + 1
+
+        signal_block = {
+            "stats": {
+                "total_resolved": sig_total,
+                "pending": sig_pending,
+                "correct_pct": round(sig_correct / sig_total * 100, 1),
+                "breakdown_by_signal": breakdown_by_signal,
+            },
+            "recent": [{
+                "ticker": s.ticker,
+                "company_name": s.company_name,
+                "predicted_at": str(s.predicted_at),
+                "signal": s.signal,
+                "confidence": s.confidence,
+                "actual_pct": s.actual_pct,
+                "outcome": s.outcome,
+            } for s in sig_resolved[:30]],
+        }
+
+    return {"predictions": prediction_block, "signals": signal_block}
 
 @app.get("/signal/{ticker:path}")
 def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
@@ -894,6 +939,15 @@ def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
             correct = sum(1 for p in past if p.outcome in ["excellent", "good", "correct_direction"])
             accuracy = round(correct / len(past) * 100)
             past_accuracy = f"Historical prediction accuracy for {ticker.upper()}: {accuracy}% ({correct}/{len(past)} correct)."
+
+        past_signals = db.query(SignalRecord).filter(
+            SignalRecord.ticker == ticker.upper(),
+            SignalRecord.outcome != None
+        ).order_by(SignalRecord.predicted_at.desc()).limit(10).all()
+        if past_signals:
+            sig_correct = sum(1 for s in past_signals if s.outcome == "correct")
+            sig_accuracy = round(sig_correct / len(past_signals) * 100)
+            past_accuracy += f" Historical signal accuracy for {ticker.upper()}: {sig_accuracy}% ({sig_correct}/{len(past_signals)} signals played out as expected)."
     except:
         pass
 
@@ -938,6 +992,24 @@ def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
         signal_data = json.loads(raw)
     except:
         signal_data = {"signal": "HOLD", "confidence": 50, "error": "Signal generation is temporarily unavailable — please try again shortly."}
+
+    if "error" not in signal_data and signal_data.get("signal") in ("BUY", "SELL", "HOLD"):
+        try:
+            db = get_db()
+            check_date = (datetime.utcnow() + timedelta(days=max(days, 1))).strftime("%Y-%m-%d")
+            db.add(SignalRecord(
+                ticker=ticker.upper(),
+                company_name=company_name,
+                horizon=horizon,
+                days=days,
+                signal=signal_data["signal"],
+                confidence=signal_data.get("confidence"),
+                price_at_prediction=current,
+                check_date=check_date,
+            ))
+            db.commit()
+        except Exception as e:
+            print(f"Signal log DB error: {e}")
 
     set_cached(cache_key, signal_data)
     return signal_data

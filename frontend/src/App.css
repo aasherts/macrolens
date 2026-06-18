@@ -1931,27 +1931,40 @@ a { color: inherit; }
 
 /* ---------- Banners ---------- */
 
-.alert-banner {
+.toast-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.toast {
   background: var(--gold-soft);
-  border-bottom: 1px solid rgba(176, 138, 62, 0.3);
+  border: 1px solid rgba(176, 138, 62, 0.3);
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
-  padding: 10px 28px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 90;
+  gap: 10px;
+  animation: card-fade-up 0.25s ease both;
 }
 
-.alert-banner button {
+.toast button {
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .backend-slow-banner {
@@ -2240,6 +2253,20 @@ a { color: inherit; }
 
 .compare-ticker-chip span:hover {
   color: var(--neg);
+}
+
+.cmp-highlight {
+  background: var(--gold-soft) !important;
+  font-weight: 700;
+  color: var(--text) !important;
+  position: relative;
+}
+
+.cmp-legend {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 12px;
+  line-height: 1.5;
 }
 
 /* ---------- Donut chart ---------- */
@@ -2632,6 +2659,14 @@ a { color: inherit; }
 
   .sector-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .toast-stack {
+    top: auto;
+    bottom: 70px;
+    left: 12px;
+    right: 12px;
+    max-width: none;
   }
 }
 

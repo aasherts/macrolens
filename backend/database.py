@@ -44,6 +44,22 @@ class Prediction(Base):
     error_pct = Column(Float, nullable=True)
     ai_reasoning = Column(String, nullable=True)
 
+class SignalRecord(Base):
+    __tablename__ = "signal_records"
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    company_name = Column(String, nullable=True)
+    horizon = Column(String, nullable=True)
+    days = Column(Integer, nullable=True)
+    signal = Column(String)
+    confidence = Column(Float, nullable=True)
+    predicted_at = Column(DateTime, default=datetime.utcnow)
+    price_at_prediction = Column(Float)
+    check_date = Column(String)
+    actual_price = Column(Float, nullable=True)
+    actual_pct = Column(Float, nullable=True)
+    outcome = Column(String, nullable=True)
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
