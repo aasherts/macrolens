@@ -47,14 +47,22 @@ const IconSearch = () => (
 const IconBell = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
 );
+const IconGrid = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+);
+const IconTrackRecord = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+);
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: IconOverview },
   { id: 'signal', label: 'Signal', icon: IconSignal },
   { id: 'compare', label: 'Compare', icon: IconCompare },
   { id: 'picks', label: 'Top Picks', icon: IconStar },
+  { id: 'sectors', label: 'Sectors', icon: IconGrid },
   { id: 'portfolio', label: 'Portfolio', icon: IconBriefcase },
   { id: 'finder', label: 'Trade Finder', icon: IconTarget },
+  { id: 'trackrecord', label: 'Track Record', icon: IconTrackRecord },
   { id: 'learn', label: 'Learn', icon: IconLearn },
 ];
 
@@ -63,8 +71,10 @@ const PAGE_TITLES = {
   signal: 'Investment Signal',
   compare: 'Compare Stocks',
   picks: 'Top Picks',
+  sectors: 'Sector Performance',
   portfolio: 'Your Portfolio',
   finder: 'Trade Finder',
+  trackrecord: 'Track Record',
   learn: 'Learn',
 };
 
@@ -223,6 +233,10 @@ function App() {
   const [finderCustomDays, setFinderCustomDays] = useState(7);
   const [topPicks, setTopPicks] = useState(() => cacheGet('ml_top_picks')?.data || []);
   const [topPicksUpdated, setTopPicksUpdated] = useState('');
+  const [sectors, setSectors] = useState(() => cacheGet('ml_sectors')?.data || []);
+  const [sectorsLoading, setSectorsLoading] = useState(false);
+  const [trackRecord, setTrackRecord] = useState(null);
+  const [trackRecordLoading, setTrackRecordLoading] = useState(false);
   const [pickSectorFilter, setPickSectorFilter] = useState('All');
   const [pickTimeframeFilter, setPickTimeframeFilter] = useState('7d');
   const [pickRiskFilter, setPickRiskFilter] = useState('All');
@@ -406,6 +420,28 @@ function App() {
           cacheSet('ml_top_picks', picks);
         })
         .catch(() => {});
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'sectors') {
+      setSectorsLoading(true);
+      fetch(`${API_URL}/sectors`)
+        .then(res => res.json())
+        .then(data => { setSectors(data.sectors || []); cacheSet('ml_sectors', data.sectors || []); })
+        .catch(() => {})
+        .finally(() => setSectorsLoading(false));
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'trackrecord') {
+      setTrackRecordLoading(true);
+      fetch(`${API_URL}/track-record`)
+        .then(res => res.json())
+        .then(data => setTrackRecord(data))
+        .catch(() => {})
+        .finally(() => setTrackRecordLoading(false));
     }
   }, [activeTab]);
 
@@ -1658,6 +1694,41 @@ function App() {
               </div>
             )}
 
+            {activeTab === 'sectors' && (
+              <div>
+                <div className="page-header">
+                  <h1>Sector Performance</h1>
+                  <p>How each major sector of the market is doing right now, tracked via sector ETFs (e.g. Technology via XLK). Click any sector to explore.</p>
+                </div>
+
+                {sectorsLoading && sectors.length === 0 ? (
+                  <div className="sector-grid">
+                    {Array.from({ length: 11 }).map((_, i) => (
+                      <div key={i} className="skeleton" style={{ height: '110px', borderRadius: '12px' }}></div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sector-grid">
+                    {sectors.map((s, i) => (
+                      <div
+                        key={s.etf}
+                        className={`sector-tile ${s.change_pct >= 0 ? 'sector-pos' : 'sector-neg'}`}
+                        onClick={() => { setTicker(s.etf); setInput(s.etf); setActiveTab('overview'); }}
+                      >
+                        <div className="sector-tile-name">{s.sector}</div>
+                        <div className="sector-tile-etf">{s.etf}</div>
+                        <div className="sector-tile-change">{s.change_pct >= 0 ? '+' : ''}{s.change_pct}%</div>
+                        <div className="sector-tile-mom">7d {s.mom_7d !== null ? `${s.mom_7d >= 0 ? '+' : ''}${s.mom_7d}%` : '--'} · 30d {s.mom_30d !== null ? `${s.mom_30d >= 0 ? '+' : ''}${s.mom_30d}%` : '--'}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{fontSize:'11px', color:'#9c8e82', textAlign:'center', padding:'16px'}}>
+                  Sectors are ranked by today's performance, strongest first. Past performance doesn't predict future returns.
+                </div>
+              </div>
+            )}
+
             {activeTab === 'portfolio' && (
               <div>
                 <div className="page-header">
@@ -1995,6 +2066,99 @@ function App() {
                     <div style={{fontSize:'14px', color:'#c94545'}}>{finderResult.error}</div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'trackrecord' && (
+              <div>
+                <div className="page-header">
+                  <h1>Track Record</h1>
+                  <p>Full transparency on how this works: every 7-day price forecast MacroLens makes is logged, then automatically checked against what actually happened. Nothing is hidden — including the misses. That history is also fed back in to nudge future forecasts (see the methodology note below).</p>
+                </div>
+
+                {trackRecordLoading && !trackRecord ? (
+                  <div className="signal-card" style={{textAlign:'center', padding:'60px'}}>
+                    <div style={{fontSize:'14px', color:'#6b5e52'}}>Loading track record...</div>
+                  </div>
+                ) : trackRecord && trackRecord.stats.total_resolved === 0 ? (
+                  <div className="signal-card" style={{textAlign:'center', padding:'40px'}}>
+                    <div style={{fontSize:'14px', color:'#6b5e52'}}>No predictions have been resolved yet — check back in a few days. {trackRecord.stats.pending} prediction{trackRecord.stats.pending === 1 ? '' : 's'} currently pending.</div>
+                  </div>
+                ) : trackRecord ? (
+                  <>
+                    <div className="portfolio-summary" style={{ marginBottom: '20px' }}>
+                      <div className="portfolio-stat">
+                        <div className="portfolio-stat-label">Resolved Predictions</div>
+                        <div className="portfolio-stat-value"><CountUp value={trackRecord.stats.total_resolved} decimals={0} /></div>
+                      </div>
+                      <div className="portfolio-stat">
+                        <div className="portfolio-stat-label">Correct Direction</div>
+                        <div className="portfolio-stat-value pos"><CountUp value={trackRecord.stats.correct_direction_pct} decimals={1} suffix="%" /></div>
+                      </div>
+                      <div className="portfolio-stat">
+                        <div className="portfolio-stat-label">Avg Error</div>
+                        <div className="portfolio-stat-value">±<CountUp value={trackRecord.stats.avg_error_pct} decimals={2} />%</div>
+                      </div>
+                      <div className="portfolio-stat">
+                        <div className="portfolio-stat-label">Still Pending</div>
+                        <div className="portfolio-stat-value">{trackRecord.stats.pending}</div>
+                      </div>
+                    </div>
+
+                    <div className="card" style={{ marginBottom: '20px' }}>
+                      <div className="card-title">Outcome Breakdown</div>
+                      <div className="outcome-bars">
+                        {['excellent', 'good', 'correct_direction', 'wrong_direction'].map(key => {
+                          const count = trackRecord.stats.breakdown[key] || 0;
+                          const pct = trackRecord.stats.total_resolved ? (count / trackRecord.stats.total_resolved * 100) : 0;
+                          const labels = { excellent: 'Excellent (< 1% off)', good: 'Good (< 3% off)', correct_direction: 'Right direction', wrong_direction: 'Wrong direction' };
+                          return (
+                            <div key={key} className="outcome-row">
+                              <span className="outcome-label">{labels[key]}</span>
+                              <div className="outcome-bar-track">
+                                <div className={`outcome-bar-fill ${key === 'wrong_direction' ? 'neg' : 'pos'}`} style={{ width: `${pct}%` }}></div>
+                              </div>
+                              <span className="outcome-count">{count}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="card" style={{ marginBottom: '20px', overflowX: 'auto' }}>
+                      <div className="card-title">Recent Resolved Predictions</div>
+                      <table className="portfolio-table">
+                        <thead>
+                          <tr>
+                            <th>Ticker</th>
+                            <th>Predicted</th>
+                            <th>Actual</th>
+                            <th>Outcome</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {trackRecord.recent.map((p, i) => (
+                            <tr key={i} onClick={() => { setTicker(p.ticker); setInput(p.ticker); setActiveTab('overview'); }}>
+                              <td>{p.ticker}</td>
+                              <td className={p.predicted_pct >= 0 ? 'pos' : 'neg'}>{p.predicted_pct >= 0 ? '+' : ''}{p.predicted_pct}%</td>
+                              <td className={p.actual_pct >= 0 ? 'pos' : 'neg'}>{p.actual_pct >= 0 ? '+' : ''}{p.actual_pct}%</td>
+                              <td>
+                                <span className={`outcome-pill ${p.outcome === 'wrong_direction' ? 'neg' : 'pos'}`}>{p.outcome?.replace('_', ' ')}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="card">
+                  <div className="card-title">How the self-calibration works</div>
+                  <p style={{ fontSize: '13px', color: 'var(--text-dim)', lineHeight: '1.7' }}>
+                    Every time you view a stock's Overview, MacroLens logs its 7-day price forecast. Roughly 7 days later, a background job checks that forecast against the real price and records whether it was right. The next time anyone requests a forecast for that ticker (or, with too little history, the site overall), MacroLens looks at the average error from the last 20 resolved predictions and nudges the new forecast to correct for any consistent bias — for example, if it's been under-predicting moves by 2 points on average, the next forecast shifts to account for that. This is a simple calibration filter, not a trained machine-learning model — it won't catch everything, but it does mean the numbers really do adjust based on what actually happened, not just sit static.
+                  </p>
+                </div>
               </div>
             )}
 

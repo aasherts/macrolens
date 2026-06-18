@@ -70,6 +70,38 @@ def call_claude(prompt, max_tokens, fallback_text):
         print(f"Claude API error: {e}")
         return fallback_text
 
+def get_calibration_bias(ticker_upper):
+    """Looks at this ticker's resolved past predictions (from checker.py)
+    and returns a small, damped correction based on the average signed
+    error (actual % move minus predicted % move). Falls back to a
+    site-wide bias if there isn't enough history for this specific ticker
+    yet. This is a simple online calibration filter, not a trained model —
+    but it means predictions really do shift over time based on what
+    actually happened."""
+    try:
+        db = get_db()
+        sample = db.query(Prediction).filter(
+            Prediction.ticker == ticker_upper,
+            Prediction.outcome != None,
+            Prediction.actual_pct != None
+        ).order_by(Prediction.predicted_at.desc()).limit(20).all()
+        scope = "ticker"
+        if len(sample) < 3:
+            sample = db.query(Prediction).filter(
+                Prediction.outcome != None,
+                Prediction.actual_pct != None
+            ).order_by(Prediction.predicted_at.desc()).limit(100).all()
+            scope = "global"
+        if len(sample) < 3:
+            return {"bias_pct": 0.0, "scope": "none", "sample_size": len(sample)}
+        errors = [p.actual_pct - p.predicted_pct for p in sample]
+        raw_bias = sum(errors) / len(errors)
+        damped = max(-5.0, min(5.0, raw_bias * 0.4))
+        return {"bias_pct": round(damped, 3), "scope": scope, "sample_size": len(sample)}
+    except Exception as e:
+        print(f"Calibration error for {ticker_upper}: {e}")
+        return {"bias_pct": 0.0, "scope": "none", "sample_size": 0}
+
 def format_market_cap(mc):
     if not mc:
         return "N/A"
@@ -270,6 +302,22 @@ def _background_screen():
 
 threading.Thread(target=_background_screen, daemon=True).start()
 
+def _background_checker():
+    """Resolves past predictions against actual outcomes so the
+    self-calibration logic in get_stock() has real data to learn from.
+    Runs once shortly after startup, then every 6 hours."""
+    import time
+    from checker import check_predictions
+    time.sleep(60)
+    while True:
+        try:
+            check_predictions()
+        except Exception as e:
+            print(f"Prediction checker error: {e}")
+        time.sleep(21600)
+
+threading.Thread(target=_background_checker, daemon=True).start()
+
 @app.get("/search/{query}")
 def search_tickers(query: str):
     url = f"https://query2.finance.yahoo.com/v1/finance/search?q={quote(query)}&quotesCount=6&newsCount=0"
@@ -370,6 +418,54 @@ def get_market_overview():
             pass
     result = {"items": results}
     set_cached("market-overview", result)
+    return result
+
+SECTOR_ETFS = {
+    "Technology": "XLK",
+    "Healthcare": "XLV",
+    "Financials": "XLF",
+    "Energy": "XLE",
+    "Consumer Discretionary": "XLY",
+    "Consumer Staples": "XLP",
+    "Industrials": "XLI",
+    "Utilities": "XLU",
+    "Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Communication Services": "XLC",
+}
+
+@app.get("/sectors")
+def get_sectors():
+    cached = get_cached("sectors")
+    if cached:
+        return cached
+    results = []
+    for name, symbol in SECTOR_ETFS.items():
+        try:
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period="35d")
+            closes = hist["Close"].dropna()
+            if len(closes) < 2:
+                continue
+            current = round(float(closes.iloc[-1]), 2)
+            previous = round(float(closes.iloc[-2]), 2)
+            change_pct = round((current - previous) / previous * 100, 2) if previous else 0
+            mom_7d = round(float((closes.iloc[-1] - closes.iloc[-7]) / closes.iloc[-7] * 100), 2) if len(closes) >= 7 else None
+            mom_30d = round(float((closes.iloc[-1] - closes.iloc[0]) / closes.iloc[0] * 100), 2) if len(closes) >= 2 else None
+            results.append({
+                "sector": name,
+                "etf": symbol,
+                "price": current,
+                "change_pct": change_pct,
+                "mom_7d": mom_7d,
+                "mom_30d": mom_30d,
+            })
+        except Exception as e:
+            print(f"Sector fetch error for {symbol}: {e}")
+            continue
+    results.sort(key=lambda x: x["change_pct"], reverse=True)
+    result = {"sectors": results}
+    set_cached("sectors", result)
     return result
 
 @app.post("/register")
@@ -697,6 +793,56 @@ def get_predictions():
         "error_pct": p.error_pct,
     } for p in predictions]
 
+@app.get("/track-record")
+def get_track_record():
+    """Public transparency view of every prediction MacroLens has made
+    and how it actually turned out — including the misses. This is the
+    same data that drives the self-calibration in get_stock()."""
+    db = get_db()
+    resolved = db.query(Prediction).filter(Prediction.outcome != None).order_by(Prediction.predicted_at.desc()).all()
+    pending = db.query(Prediction).filter(Prediction.outcome == None).count()
+
+    total = len(resolved)
+    if total == 0:
+        return {
+            "stats": {
+                "total_resolved": 0,
+                "pending": pending,
+                "correct_direction_pct": None,
+                "avg_error_pct": None,
+                "breakdown": {},
+            },
+            "recent": [],
+        }
+
+    correct_direction = sum(1 for p in resolved if p.outcome in ("excellent", "good", "correct_direction"))
+    breakdown = {}
+    for p in resolved:
+        breakdown[p.outcome] = breakdown.get(p.outcome, 0) + 1
+    avg_error = sum(p.error_pct for p in resolved if p.error_pct is not None) / total
+
+    recent = resolved[:30]
+
+    return {
+        "stats": {
+            "total_resolved": total,
+            "pending": pending,
+            "correct_direction_pct": round(correct_direction / total * 100, 1),
+            "avg_error_pct": round(avg_error, 2),
+            "breakdown": breakdown,
+        },
+        "recent": [{
+            "ticker": p.ticker,
+            "company_name": p.company_name,
+            "predicted_at": str(p.predicted_at),
+            "predicted_pct": p.predicted_pct,
+            "predicted_direction": p.predicted_direction,
+            "actual_pct": p.actual_pct,
+            "outcome": p.outcome,
+            "error_pct": p.error_pct,
+        } for p in recent],
+    }
+
 @app.get("/signal/{ticker:path}")
 def get_signal(ticker: str, horizon: str = "medium", days: int = 30):
     cache_key = f"signal_{ticker}_{horizon}_{days}"
@@ -970,10 +1116,22 @@ def get_stock(ticker: str, range: str = "1mo"):
         round(current + avg_daily_change * 4, 2),
         round(current + avg_daily_change * 7, 2),
     ]
+
+    # Self-calibration: nudge the forecast based on how wrong this same
+    # ticker's (or the site's) recent predictions actually turned out to be.
+    calibration = get_calibration_bias(ticker.upper())
+    bias = calibration["bias_pct"]
+    if bias and current:
+        pred_mid = [
+            round(pred_mid[0] * (1 + (bias * (2 / 7)) / 100), 2),
+            round(pred_mid[1] * (1 + (bias * (4 / 7)) / 100), 2),
+            round(pred_mid[2] * (1 + bias / 100), 2),
+        ]
+
     pred_high = [round(p + band, 2) for p in pred_mid]
     pred_low = [round(p - band, 2) for p in pred_mid]
 
-    direction = "upward" if avg_daily_change > 0 else "downward"
+    direction = "upward" if pred_mid[-1] > current else "downward"
     pct_predicted = round((pred_mid[-1] - current) / current * 100, 2) if current else 0
 
     try:
@@ -1010,6 +1168,13 @@ def get_stock(ticker: str, range: str = "1mo"):
     accuracy_context = ""
     if past_predictions:
         accuracy_context = "\n\nYour past predictions for " + ticker.upper() + ": " + "; ".join(past_predictions) + "\nUse this to calibrate your current prediction."
+    if calibration["scope"] != "none" and bias:
+        direction_word = "underestimated" if bias > 0 else "overestimated"
+        accuracy_context += (
+            f"\n\nCalibration note: based on {calibration['sample_size']} resolved past predictions "
+            f"({calibration['scope']} scope), this model has historically {direction_word} actual moves "
+            f"by about {abs(bias)} percentage points — the price forecast above has already been adjusted for this."
+        )
 
     prompt = (
         "You are a financial analyst. Analyze this stock data and provide 2-3 bullet points explaining "
@@ -1062,6 +1227,7 @@ def get_stock(ticker: str, range: str = "1mo"):
             "low": pred_low,
             "direction": direction,
             "pct": pct_predicted,
+            "calibration": calibration,
         },
         "sentiment": {
             "recommendation": recommendation,

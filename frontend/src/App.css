@@ -1839,6 +1839,19 @@ a { color: inherit; }
     align-items: flex-start;
   }
 
+  .sector-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .outcome-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .outcome-count {
+    text-align: left;
+  }
+
   .bottom-nav {
     display: flex;
     position: fixed;
@@ -1849,10 +1862,11 @@ a { color: inherit; }
     background: var(--surface);
     border-top: 1px solid var(--border);
     z-index: 60;
+    overflow-x: auto;
   }
 
   .bottom-nav-item {
-    flex: 1;
+    flex: 0 0 56px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1870,6 +1884,10 @@ a { color: inherit; }
 @media (min-width: 769px) and (max-width: 1024px) {
   .picks-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .sector-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .overview-grid {
@@ -2611,4 +2629,128 @@ a { color: inherit; }
   .screener-filters {
     overflow-x: auto;
   }
+
+  .sector-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---------- Sectors page ---------- */
+
+.sector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.sector-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.sector-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.sector-tile.sector-pos {
+  border-left-color: var(--pos);
+}
+
+.sector-tile.sector-neg {
+  border-left-color: var(--neg);
+}
+
+.sector-tile-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.sector-tile-etf {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-bottom: 12px;
+}
+
+.sector-tile-change {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.sector-tile.sector-pos .sector-tile-change { color: var(--pos); }
+.sector-tile.sector-neg .sector-tile-change { color: var(--neg); }
+
+.sector-tile-mom {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ---------- Track record page ---------- */
+
+.outcome-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.outcome-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+}
+
+.outcome-label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.outcome-bar-track {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.outcome-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.outcome-bar-fill.pos { background: var(--pos); }
+.outcome-bar-fill.neg { background: var(--neg); }
+
+.outcome-count {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+
+.outcome-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 12px;
+  text-transform: capitalize;
+}
+
+.outcome-pill.pos {
+  background: var(--pos-soft);
+  color: var(--pos);
+}
+
+.outcome-pill.neg {
+  background: var(--neg-soft);
+  color: var(--neg);
 }
